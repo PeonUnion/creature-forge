@@ -1,0 +1,49 @@
+# ============================================================
+# AssetsLab .gitignore
+# Grouped by concern. Keep entries that match paths that may be
+# regenerated on any branch; drop stale entries for retired assets.
+# ============================================================
+
+# --- Environment / toolchain ---
+.tools/
+.venv/
+.venv*/
+# --- Python caches ---
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Godot project cache ---
+prototype/.godot/
+
+# --- Generated / test artifacts (build outputs, never committed) ---
+prototype/test_output/
+dist/
+build/
+node_modules/
+# pyinstaller 生成的 spec（运行 scripts/build_release.py 时产生）
+/creature-forge-*.spec
+*.spec.bak
+
+# --- Godot import metadata ---
+*.import
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+
+# --- Playwright E2E 输出 ---
+assetslab/web/test-results/
+assetslab/web/playwright-report/
+
+# --- 数据目录（默认仓库根 data/：species 为资产提交；presets 为运行时用户数据） ---
+data/presets/
+
+# --- 测试数据（E2E 用 test-data/，由 e2e/global-setup.mjs 生成，不提交） ---
+test-data/
+test-data-cli/
+
+# --- CLI/脚本测试输出 ---
+test-output/

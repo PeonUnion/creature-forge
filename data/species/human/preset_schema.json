@@ -1,0 +1,150 @@
+{
+  "schema": "creatureforge_preset_schema_v1",
+  "species": "human",
+  "description": "预设 schema（随物种骨架自动派生）：预设只需提供 body 体型参数 + actions 动作参数值。",
+  "required_fields": [
+    "preset_id",
+    "schema",
+    "title",
+    "description",
+    "species",
+    "body",
+    "actions"
+  ],
+  "joints_3d": [
+    "head",
+    "jaw",
+    "neck",
+    "chest",
+    "sternum",
+    "waist",
+    "abdomen",
+    "pelvis",
+    "clavicle_left",
+    "shoulder_left",
+    "clavicle_right",
+    "shoulder_right",
+    "rib_upper_left",
+    "rib_upper_right",
+    "rib_lower_left",
+    "rib_lower_right",
+    "elbow_left",
+    "wrist_left",
+    "palm_left",
+    "finger_left",
+    "elbow_right",
+    "wrist_right",
+    "palm_right",
+    "finger_right",
+    "hip_left",
+    "knee_left",
+    "ankle_left",
+    "heel_left",
+    "foot_left",
+    "toe_left",
+    "hip_right",
+    "knee_right",
+    "ankle_right",
+    "heel_right",
+    "foot_right",
+    "toe_right"
+  ],
+  "params": {
+    "head_scale": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "头大小"
+    },
+    "neck_length": {
+      "default": 1.0,
+      "min": 0.5,
+      "max": 1.5,
+      "step": 0.05,
+      "label": "脖子长度"
+    },
+    "upper_torso_length": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "上躯干长"
+    },
+    "sternum_length": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "胸骨长度"
+    },
+    "lower_torso_length": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "下躯干长"
+    },
+    "shoulder_width": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "肩宽"
+    },
+    "hip_width": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "髋宽"
+    },
+    "upper_arm_length": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "上臂长"
+    },
+    "forearm_length": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "前臂长"
+    },
+    "thigh_length": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "大腿长"
+    },
+    "shin_length": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "小腿长"
+    }
+  },
+  "canvas": {
+    "width": 960,
+    "height": 600,
+    "floor_y": 470
+  },
+  "head_radius": 24,
+  "body_default": {
+    "head_scale": 1.0,
+    "neck_length": 1.0,
+    "upper_torso_length": 1.0,
+    "sternum_length": 1.0,
+    "lower_torso_length": 1.0,
+    "shoulder_width": 1.0,
+    "hip_width": 1.0,
+    "upper_arm_length": 1.0,
+    "forearm_length": 1.0,
+    "thigh_length": 1.0,
+    "shin_length": 1.0
+  }
+}
