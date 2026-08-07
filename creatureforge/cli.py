@@ -29,6 +29,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from creatureforge.api import make_api  # noqa: E402
 from creatureforge.config import DEFAULT_DATA_DIR, ensure_species_seeded  # noqa: E402
+from creatureforge import updater  # noqa: E402
 
 _DATA_DIR: Path | None = None  # --data-dir 覆盖（默认仓库根 data/；打包运行时用户目录）
 
@@ -187,6 +188,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="creatureforge",
         description="CreatureForge CLI — 与 HTTP API 同级，共用同一套接口（不启动 server）")
     p.add_argument("--data-dir", default=None, help="数据目录（默认仓库根 data/）")
+    p.add_argument("--version", "-V", action="version",
+                   version=f"CreatureForge CLI {updater.current_version()} ({updater.current_platform()})")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     # species
@@ -232,6 +235,15 @@ def build_parser() -> argparse.ArgumentParser:
     r1.add_argument("--body", help="体型参数 a=1,b=2"); r1.add_argument("--actions", help="动作参数 walk3d=intensity=1.2")
     r1.add_argument("--action", help="动作 id"); _add_render_opts(r1)
 
+    # self-update
+    up = sub.add_parser("upgrade", help="检查并更新到最新版（GitHub Releases）")
+    up.add_argument("--check", action="store_true", help="仅检测是否有新版本（有则退出码 2）")
+    up.add_argument("--yes", "-y", action="store_true", help="跳过确认直接更新")
+    up.add_argument("--force", action="store_true", help="即使版本相同也重新安装")
+    up.add_argument("--repo", default=updater.DEFAULT_REPO, help=f"更新源仓库（默认 {updater.DEFAULT_REPO}）")
+    up.add_argument("--channel", default="latest", choices=["latest", "prerelease"],
+                    help="更新通道：latest=正式版（默认），prerelease=含预览版")
+
     return p
 
 
@@ -249,6 +261,8 @@ def main(argv: list[str] | None = None) -> int:
             cmd_preset(args)
         elif args.cmd == "render":
             cmd_render(args)
+        elif args.cmd == "upgrade":
+            return updater.run_upgrade(args)
         else:
             build_parser().print_help()
     except KeyError as e:

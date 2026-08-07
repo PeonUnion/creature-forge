@@ -21,6 +21,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import shutil
@@ -38,6 +39,10 @@ EXE = ".exe" if os.name == "nt" else ""
 VERSION = os.environ.get("ASSETSLAB_VERSION", "").strip()
 # 平台+架构后缀：CI 传 ASSETSLAB_PLATFORM（如 linux-x64 / windows-x64 / macos-arm64）
 PLATFORM = os.environ.get("ASSETSLAB_PLATFORM", "").strip()
+# 更新源仓库（打进 version.json，CLI upgrade / --version 读取）
+REPO = os.environ.get("ASSETSLAB_REPO", "PeonUnion/creature-forge").strip()
+# 构建元数据目录（cf_meta/version.json，--add-data 打进产物）
+META_DIR = ROOT / ".cf-meta"
 
 
 def _platform_suffix() -> str:
@@ -69,6 +74,19 @@ def _version_suffix() -> str:
     return "dev"
 
 
+def _write_version_meta(ver: str, platform_suffix: str) -> Path:
+    """写 cf_meta/version.json（CLI --version 与 upgrade 读取的当前版本信息）。"""
+    META_DIR.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "version": ver,
+        "platform": platform_suffix.lstrip("-"),
+        "repo": REPO,
+    }
+    f = META_DIR / "version.json"
+    f.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
+    return f
+
+
 def _build(name: str, entry: Path) -> None:
     """pyinstaller --onefile 打包单个入口（嵌入 web + 物种数据）。"""
     cmd = [
@@ -78,6 +96,7 @@ def _build(name: str, entry: Path) -> None:
         "--name", name,
         "--add-data", f"{WEB_DIST}{SEP}web/dist",
         "--add-data", f"{DATA_SPECIES}{SEP}data/species",
+        "--add-data", f"{META_DIR}{SEP}cf_meta",
         str(entry),
     ]
     print(f"\n=== Building {name} ===")
@@ -93,6 +112,7 @@ def main() -> None:
 
     ver = _version_suffix()
     print(f"CreatureForge version: {ver}")
+    _write_version_meta(ver, _platform_suffix())
 
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)

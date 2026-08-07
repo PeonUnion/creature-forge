@@ -30,6 +30,8 @@ node_modules/
 # 本地 pyinstaller 构建二进制（发布由 CI 产出）
 /creature-forge-cli-*
 /creature-forge-server-*
+# 构建时生成的版本元数据（cf_meta/version.json，打进产物用）
+/.cf-meta/
 
 # --- Godot import metadata ---
 *.import

@@ -8,4 +8,4 @@ Species → Presets → Motions → Render → Export
     motion.py    — 动作引擎
     render.py    — 骨架渲染
 """
-__version__ = "2.0.0"
+__version__ = "0.1.0"
