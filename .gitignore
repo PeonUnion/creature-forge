@@ -47,3 +47,6 @@ test-data-cli/
 
 # --- CLI/脚本测试输出 ---
 test-output/
+
+# --- dev 运行时信息（start-dev.sh 写入：pid/端口/日志） ---
+.dev/
