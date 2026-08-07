@@ -130,9 +130,15 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         pan_y = float(qs.get("pan_y", ["0"])[0])
         grid = qs.get("grid", ["1"])[0] not in ("0", "false")
         data = qs.get("data", ["0"])[0] in ("1", "true")
-        # 其余查询参数作为体型参数（param_chains 驱动，3D 空间应用）
-        cam_keys = {"yaw", "pitch", "dist", "pan_x", "pan_y", "grid", "data"}
+        # body JSON（骨架体型参数，WebGL 数据用）与其余浮点体型参数（param_chains 驱动）合并
+        cam_keys = {"yaw", "pitch", "dist", "pan_x", "pan_y", "grid", "data", "body"}
         body = {k: float(v[0]) for k, v in qs.items() if k not in cam_keys}
+        try:
+            body_json = json.loads(qs.get("body", ["{}"])[0])
+            if isinstance(body_json, dict):
+                body = {**body, **body_json}
+        except Exception:
+            pass
         species_id = parts[0]
         try:
             if data:
@@ -167,8 +173,11 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         species_q = qs.get("species", [None])[0]
         # data=1 → 返回动作每帧 3D 关节数据（前端 WebGL 动画播放）
         if qs.get("data", ["0"])[0] in ("1", "true"):
+            body = json.loads(qs.get("body", ["{}"])[0])
+            params = json.loads(qs.get("params", ["{}"])[0])
             try:
-                return self._json(self.api.motion3d_data(parts[0], species=species_q))
+                return self._json(self.api.motion3d_data(
+                    parts[0], species=species_q, body=body, params=params))
             except KeyError as e:
                 return self._json({"ok": False, "error": str(e)}, 404)
             except Exception as e:

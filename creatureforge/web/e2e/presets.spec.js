@@ -39,9 +39,9 @@ test.describe('预设管理（全量 E2E）', () => {
     await expect(page.locator('.action-card', { hasText: 'walk3d' })).toBeVisible()
     await expect(page.locator('.action-card', { hasText: '动作幅度' })).toBeVisible()
 
-    // 预览 tab：实时渲染骨架（应用体型）
+    // 预览 tab：实时渲染骨架（应用体型，WebGL 统一组件）
     await page.locator('.el-tabs__item', { hasText: '预览' }).click()
-    await expect(page.locator('.preview-stage img')).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 30_000 })
     // 选择动作 walk3d → 动作帧渲染
     // （el-select dropdown 为 fixed 定位，内容底部时弹层可能超出 720 视口 → 用 evaluate 触发 DOM click，
     //   绕过 Playwright 视口/坐标检查，功能等价）

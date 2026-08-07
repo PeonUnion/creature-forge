@@ -113,11 +113,12 @@
                   <el-option v-for="(a, aid) in schema.actions" :key="aid" :label="`动作：${a.title||aid}`" :value="aid" />
                 </el-select>
               </div>
-              <div class="preview-stage" :class="{ dragging }" @mousedown="onDragDown">
-                <img v-if="previewSrc" :src="previewSrc" class="preview-img" />
-                <div v-else class="preview-empty"><p>{{ rendering ? '渲染中…' : '调整参数自动渲染预览' }}</p></div>
-                <span v-if="dragging" class="orbit-hint">拖动旋转视角…</span>
-              </div>
+              <Skeleton3DViewer v-if="previewData" ref="previewViewer"
+                :joints="previewData.joints" :frames="previewData.frames" :bones="previewData.bones"
+                :head-radius="previewData.head_radius" :center="previewData.center"
+                :fps="previewData.fps"
+                @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
+              <div v-else class="preview-empty"><p>{{ rendering ? '渲染中…' : '调整参数自动渲染预览' }}</p></div>
             </el-tab-pane>
           </el-tabs>
         </div>
@@ -138,7 +139,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { api } from '../api.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CameraControls from '../components/CameraControls.vue'
-import { useOrbitDrag } from '../composables/useOrbitDrag.js'
+import Skeleton3DViewer from '../components/Skeleton3DViewer.vue'
 
 const loading = ref(true)
 const saving = ref(false)
@@ -150,15 +151,13 @@ const creating = ref(false)
 const newSpeciesId = ref('')
 const tab = ref('body')
 
-// 预览
+// 预览（统一 WebGL 组件：骨架 joints 或动作 frames，均由父组件请求数据传入）
 const cam = ref({ yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 })
 const previewAction = ref('')
-const previewUrl = ref(null)
-const previewFrames = ref([])
-const previewFrameIndex = ref(0)
+const previewData = ref(null)   // WebGL 数据 {joints|frames, bones, fps, ...}
+const previewViewer = ref(null) // Skeleton3DViewer 实例（setView 控制相机）
 const rendering = ref(false)
 let renderTimer = null
-let playTimer = null
 
 const camQS = () => `yaw=${cam.value.yaw}&pitch=${cam.value.pitch}&dist=${cam.value.dist}&pan_x=${cam.value.panX}&pan_y=${cam.value.panY}`
 
@@ -170,7 +169,6 @@ const bodyParamItems = computed(() => {
     step: spec.step || 0.01, def: spec.default ?? 1.0,
   }))
 })
-const previewSrc = computed(() => previewFrames.value?.[previewFrameIndex.value] ?? previewUrl.value)
 
 const round = (v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v)
 
@@ -197,8 +195,7 @@ async function openPreset(p) {
     current.value = await api.presetDetail(p.preset_id)
     tab.value = 'body'
     previewAction.value = ''
-    previewFrames.value = []
-    previewUrl.value = null
+    previewData.value = null
   } catch (e) { ElMessage.error(e.message) }
 }
 
@@ -215,7 +212,7 @@ async function initNew() {
   } catch (e) { ElMessage.error(e.message) }
 }
 
-function close() { current.value = null; isNew.value = false; previewFrames.value = []; previewUrl.value = null }
+function close() { current.value = null; isNew.value = false; previewData.value = null }
 
 async function save() {
   if (!current.value?.preset_id) { ElMessage.warning('预设 ID 不能为空'); return }
@@ -253,8 +250,15 @@ function setAction(aid, pkey, val) {
 
 // -- 实时预览（body/actions/cam/action 变化 → live 渲染） --
 
-watch([() => current.value?.body, () => current.value?.actions, cam, previewAction],
-      () => { scheduleRender() }, { deep: true })
+// 数据变化（体型/动作参数/动作选择）→ 重新请求 WebGL 数据（父组件调接口，组件只接收）
+watch([() => current.value?.body, () => current.value?.actions, previewAction],
+      () => scheduleRender(), { deep: true })
+// 相机变化 → 仅 setView（WebGL 即时，不重请求）
+watch(cam, () => {
+  if (previewData.value && previewViewer.value) {
+    previewViewer.value.setView(cam.value.yaw, cam.value.pitch, cam.value.dist, cam.value.panX, cam.value.panY)
+  }
+}, { deep: true })
 
 function scheduleRender() {
   if (!current.value) return
@@ -268,36 +272,22 @@ async function renderLive() {
   rendering.value = true
   try {
     const body = encodeURIComponent(JSON.stringify(c.body || {}))
-    const actions = encodeURIComponent(JSON.stringify(c.actions || {}))
-    let qs = `species=${encodeURIComponent(c.species)}&body=${body}&actions=${actions}&${camQS()}`
-    if (previewAction.value) qs += `&action=${encodeURIComponent(previewAction.value)}&frames=1`
-    const r = await api.preset3dLive(qs)
     if (previewAction.value) {
-      previewFrames.value = r.frames || []
-      previewUrl.value = null
+      // 动作预览：每帧 3D 关节数据（应用体型 + 动作参数）
+      const params = encodeURIComponent(JSON.stringify((c.actions || {})[previewAction.value] || {}))
+      const r = await api.motion3dData(previewAction.value,
+        `species=${encodeURIComponent(c.species)}&body=${body}&params=${params}`)
+      if (r.ok && r.frames) previewData.value = r
+      else previewData.value = null
     } else {
-      previewUrl.value = r.data_url
-      previewFrames.value = []
+      // 骨架预览：应用体型后的骨架 3D 数据
+      const r = await api.skeleton3dData(c.species, `data=1&body=${body}`)
+      if (r.ok && r.joints) previewData.value = r
+      else previewData.value = null
     }
   } catch (e) { ElMessage.error(e.message) }
   rendering.value = false
 }
-
-// 动作帧轮播
-watch(previewFrames, (f) => {
-  if (playTimer) { clearInterval(playTimer); playTimer = null }
-  previewFrameIndex.value = 0
-  if (f && f.length > 1) playTimer = setInterval(() => {
-    previewFrameIndex.value = (previewFrameIndex.value + 1) % f.length
-  }, 160)
-})
-
-// 轨道相机：预览图拖拽旋转
-const { onMouseDown: onDragDown, isDragging } = useOrbitDrag({
-  getCam: () => cam.value,
-  setCam: (c) => { cam.value = c },
-})
-const dragging = isDragging
 
 onBeforeUnmount(() => {
   if (renderTimer) clearTimeout(renderTimer)
@@ -349,10 +339,6 @@ onBeforeUnmount(() => {
 .no-params { color: #c0c4cc; font-size: .8rem; }
 
 .preview-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-.preview-stage { position: relative; display: flex; justify-content: center; min-height: 320px; cursor: grab; user-select: none; border: 1px solid #111827; border-radius: 8px; background: #111827; overflow: hidden; }
-.preview-stage.dragging { cursor: grabbing; }
-.preview-img { max-width: 100%; max-height: 560px; pointer-events: none; }
-.orbit-hint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: rgba(0,0,0,.65); color: #fff; font-size: .75rem; padding: 3px 10px; border-radius: 999px; }
 .preview-empty { text-align: center; color: #c0c4cc; padding: 40px; }
 
 .empty-state { text-align: center; padding: 60px 20px; }

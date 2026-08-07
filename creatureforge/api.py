@@ -122,10 +122,11 @@ class ApiService:
                 "head_radius": float(skel3d.get("head_radius", 22.0))}
 
     def motion3d_data(self, action_id: str, *, species: str | None = None,
-                      params: dict | None = None) -> dict:
+                      body: dict | None = None, params: dict | None = None) -> dict:
         """返回动作每帧 3D 关节数据（前端 WebGL 动画播放用，不渲染 PNG）。
 
-        frames 为每帧 {关节名: [x,y,z]}（Y-down 项目坐标），bones 连接对，frame_count/fps。
+        body 为体型参数、params 为动作参数（均应用）；frames 为每帧 {关节名: [x,y,z]}
+        （Y-down 项目坐标），bones 连接对，frame_count/fps。
         """
         from .skeleton3d import build_skeleton_3d, pose_3d
         if species:
@@ -136,7 +137,7 @@ class ApiService:
             if not found:
                 raise KeyError(f"3D action not found: {action_id}")
             species_id, motion = found
-        skel3d = build_skeleton_3d(species_id, species_root=self.species._root)
+        skel3d = build_skeleton_3d(species_id, body=body, species_root=self.species._root)
         n = int(motion.get("frame_count", 8))
         p = params or {}
         frames = [pose_3d(skel3d, motion, i, params=p) for i in range(n)]
