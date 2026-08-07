@@ -129,10 +129,11 @@ class ApiService:
     def render_motion3d(self, action_id: str, *, species: str | None = None, yaw: float = 0,
                         pitch: float = 0, dist: float = 1.0, pan_x: float = 0,
                         pan_y: float = 0, grid: bool = True, frame: int = 0,
-                        gif: bool = False, frames: bool = False) -> dict:
-        """3D 动作渲染。返回 {'data_url'} 或 {'frames':[...],'frame_count'} 或 {'gif':...}。
+                        gif: bool = False, frames: bool = False, sprite: bool = False) -> dict:
+        """3D 动作渲染。返回 {'data_url'} | {'frames':[...],'frame_count'} | {'gif':...} | {'sprite':...}。
 
         dist 为距离倍数（相对自动适配基准，1=模型占垂直视野 76%）；grid 是否绘制网格。
+        sprite=1 返回横向拼接大图（一次请求/解码，前端 CSS 动画逐帧播放，性能最优）。
         """
         from .skeleton3d import build_skeleton_3d, pose_3d, render_pose, _fit_distance
         from PIL import Image
@@ -151,6 +152,19 @@ class ApiService:
         n = int(motion.get("frame_count", 8))
         base_pose = pose_3d(skel3d, motion, 0)
         dist_abs = _fit_distance(base_pose, center) * max(dist, 0.01)
+        if sprite:
+            imgs = []
+            for i in range(n):
+                p = pose_3d(skel3d, motion, i)
+                imgs.append(render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
+                                        grid=grid, grid_y=ground_y, head_radius=hr))
+            w, h = imgs[0].size
+            sheet = Image.new("RGB", (w * n, h))
+            for i, im in enumerate(imgs):
+                sheet.paste(im, (i * w, 0))
+            fps = int(motion.get("fps", 6)) or 6
+            return {"ok": True, "sprite": image_to_data_url(sheet), "frame_count": n,
+                    "frame_w": w, "frame_h": h, "fps": fps, "species": species_id}
         if frames:
             urls = []
             for i in range(n):

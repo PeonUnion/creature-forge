@@ -125,8 +125,11 @@
             </div>
           </div>
           <MotionPreview
-            :frames="motionFrames"
-            :fps="6"
+            :sprite="motionSprite"
+            :frame-count="motionFrameCount"
+            :frame-w="motionFrameW"
+            :frame-h="motionFrameH"
+            :fps="motionFps"
             :cam="cam"
             :species-id="selectedSpecies?.id"
             :motion-id="actionEditor?.motion_id"
@@ -265,7 +268,19 @@ const skeletonPreview = ref(null)
 const previewLoading = ref(false)
 const actionEditor = ref(null)
 const actionJson = ref('')
-const motionFrames = ref([])
+// 动作预览：sprite 拼接大图 + 帧元数据（一次请求/解码，CSS 动画播放）
+const motionSprite = ref('')
+const motionFrameCount = ref(0)
+const motionFrameW = ref(0)
+const motionFrameH = ref(0)
+const motionFps = ref(6)
+function resetMotionSprite() {
+  motionSprite.value = ''
+  motionFrameCount.value = 0
+  motionFrameW.value = 0
+  motionFrameH.value = 0
+  motionFps.value = 6
+}
 const motionRenderLoading = ref(false)
 const cam = ref({ yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 })
 const camQS = () => `yaw=${cam.value.yaw}&pitch=${cam.value.pitch}&dist=${cam.value.dist}&pan_x=${cam.value.panX}&pan_y=${cam.value.panY}`
@@ -307,7 +322,7 @@ async function selectSpecies(sp) {
   actionEditor.value = null
   previews.value = null
   skeletonPreview.value = null
-  motionFrames.value = []
+  resetMotionSprite()
   editMode.value = null
   try {
     speciesDetail.value = await api.speciesDetail(sp.id)
@@ -326,7 +341,7 @@ async function openAction(sp, actionId) {
     const act = await api.actionDetail(sp.id, actionId)
     actionEditor.value = act
     actionJson.value = JSON.stringify(act, null, 2)
-    motionFrames.value = []
+    resetMotionSprite()
     // 进入动作预览：默认「正面」视角并自动渲染
     cam.value = { ...cam.value, yaw: 0, pitch: 0 }
     await renderAction()
@@ -336,7 +351,7 @@ async function openAction(sp, actionId) {
 function startCreateAction() {
   actionEditor.value = { schema:'creatureforge_motion3d_v1', motion_id:'', title:'', description:'', species:selectedSpecies.value.id, frame_count:8, params:{}, root3d:{dy:{phase:true}}, offsets3d:{}, ik3d:{} }
   actionJson.value = JSON.stringify(actionEditor.value, null, 2)
-  motionFrames.value = []
+  resetMotionSprite()
 }
 
 async function saveAction() {
@@ -390,9 +405,17 @@ async function renderAction() {
   if (!actionEditor.value?.motion_id) { ElMessage.warning('请先填写 motion_id'); return }
   motionRenderLoading.value = true
   try {
-    // 3D 动作：3D 相机渲染（显式按所属物种）；frames=1 返回全部帧 PNG 供前端轮播
-    const r = await api.renderMotion3d(actionEditor.value.motion_id, `species=${selectedSpecies.value.id}&` + camQS() + '&frames=1')
-    motionFrames.value = (r.frames && r.frames.length) ? r.frames : (r.data_url ? [r.data_url] : [])
+    // 3D 动作：sprite=1 返回横向拼接大图 + 帧元数据，前端 CSS 动画播放（一次请求/解码，性能最优）
+    const r = await api.renderMotion3d(actionEditor.value.motion_id, `species=${selectedSpecies.value.id}&` + camQS() + '&sprite=1')
+    if (r.sprite) {
+      motionSprite.value = r.sprite
+      motionFrameCount.value = r.frame_count || 0
+      motionFrameW.value = r.frame_w || 0
+      motionFrameH.value = r.frame_h || 0
+      motionFps.value = r.fps || 6
+    } else {
+      resetMotionSprite()
+    }
   } catch(e) { ElMessage.error(e.message) }
   motionRenderLoading.value = false
 }

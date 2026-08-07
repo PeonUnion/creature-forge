@@ -159,12 +159,13 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         grid = qs.get("grid", ["1"])[0] not in ("0", "false")
         frame = int(qs.get("frame", ["0"])[0])
         gif = qs.get("gif", ["0"])[0] in ("1", "true")
+        sprite = qs.get("sprite", ["0"])[0] in ("1", "true")
         species_q = qs.get("species", [None])[0]
         try:
             result = self.api.render_motion3d(
                 parts[0], species=species_q, yaw=yaw, pitch=pitch, dist=dist,
                 pan_x=pan_x, pan_y=pan_y, grid=grid,
-                frame=frame, gif=gif,
+                frame=frame, gif=gif, sprite=sprite,
                 frames=qs.get("frames", ["0"])[0] in ("1", "true"))
             return self._json(result)
         except KeyError as e:

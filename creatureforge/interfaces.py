@@ -111,7 +111,7 @@ class Api(Protocol):
     def render_motion3d(self, action_id: str, *, species: str | None = None, yaw: float = 0,
                         pitch: float = 0, dist: float = 1.0, pan_x: float = 0,
                         pan_y: float = 0, grid: bool = True, frame: int = 0,
-                        gif: bool = False, frames: bool = False) -> dict: ...
+                        gif: bool = False, frames: bool = False, sprite: bool = False) -> dict: ...
     def render_preset3d(self, preset_ref: str, *, species: str | None = None,
                         body: dict | None = None, actions: dict | None = None,
                         action_id: str | None = None, yaw: float = 0, pitch: float = 0,

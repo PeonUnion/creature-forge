@@ -52,10 +52,18 @@ test.describe('物种管理（全量 E2E）', () => {
     // 动作 JSON 定义区（el-input textarea，class 在 wrapper）
     await expect(page.locator('.json-editor')).toBeVisible()
     // 动作预览自动渲染（帧播放，播放按钮启用）
-    await expect(page.locator('.mp-img')).toBeVisible({ timeout: 40_000 })
+    await expect(page.locator('.mp-sprite')).toBeVisible({ timeout: 40_000 })
     await expect(page.locator('button', { hasText: '播放' })).toBeEnabled()
     // 帧计数徽章 1/16
     await expect(page.locator('.mp-badge', { hasText: '16' })).toBeVisible()
+    // 点「播放」→ CSS 动画真实运行（sprite 逐帧动画）
+    await page.locator('button', { hasText: '播放' }).click()
+    await expect(page.locator('button', { hasText: '暂停' })).toBeVisible()
+    await expect.poll(() => page.evaluate(() => {
+      const a = document.querySelector('.mp-sprite')?.getAnimations?.()[0]
+      return a ? a.playState : 'none'
+    })).toBe('running')
+    await page.locator('button', { hasText: '暂停' }).click()
     // GIF 导出（触发浏览器下载）
     const dl = page.waitForEvent('download', { timeout: 60_000 })
     await page.locator('button', { hasText: '导出 GIF' }).click()
@@ -68,7 +76,7 @@ test.describe('物种管理（全量 E2E）', () => {
     await page.locator('.el-tabs__item', { hasText: '动作管理' }).click()
     await expect(page.locator('.cell-title', { hasText: 'Walk 3D' })).toBeVisible()
     await page.locator('.el-table button', { hasText: '编辑' }).first().click()
-    await expect(page.locator('.mp-img')).toBeVisible({ timeout: 40_000 })
+    await expect(page.locator('.mp-sprite')).toBeVisible({ timeout: 40_000 })
     // 初始：正面应高亮（openAction 默认 yaw=0）
     await expect(page.locator('button', { hasText: '正面' })).toHaveClass(/primary/)
     // 在预览图上拖拽（水平 +70px → yaw 增加，离开快捷预设角度）
