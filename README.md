@@ -51,11 +51,22 @@ cd creatureforge/web && pnpm install
 
 ## Dev helper scripts
 
+**Linux / macOS (bash)**
+
 ```bash
 ./scripts/start-dev.sh     # one-command dev env (backend --dev:8765 + front-end Vite:5173, hot reload, LAN-accessible; Ctrl+C stops)
-./scripts/stop-dev.sh      # stop dev processes
+./scripts/stop-dev.sh      # stop dev (reads .dev/runtime.json for exact PIDs)
 ./scripts/test.sh          # full test suite (verify + CLI + E2E)
 ./scripts/build.sh         # build (front-end dist + binaries dist/)
+```
+
+**Windows (.bat)**
+
+```bat
+scripts\start-dev.bat      # one-command start (backend + front-end, LAN-accessible; writes .dev\runtime.json)
+scripts\stop-dev.bat       # stop (exact PID from runtime.json + port fallback)
+scripts\test.bat           # full test suite (verify + CLI + E2E)
+scripts\build.bat          # build (front-end dist + binaries dist\)
 ```
 
 ## Testing

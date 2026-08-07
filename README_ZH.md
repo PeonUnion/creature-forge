@@ -51,11 +51,22 @@ cd creatureforge/web && pnpm install
 
 ## 开发辅助脚本
 
+**Linux / macOS（bash）**
+
 ```bash
 ./scripts/start-dev.sh     # 一键启动开发环境（后端 --dev:8765 + 前端 Vite:5173，热更新，局域网可访问，Ctrl+C 停止）
-./scripts/stop-dev.sh      # 停止开发环境进程
+./scripts/stop-dev.sh      # 停止开发环境（读 .dev/runtime.json 精确停止）
 ./scripts/test.sh          # 全量测试（verify + CLI + E2E）
 ./scripts/build.sh         # 构建（前端 dist + 二进制 dist/）
+```
+
+**Windows（.bat）**
+
+```bat
+scripts\start-dev.bat      # 一键启动（后端 + 前端，局域网可访问；写 .dev\runtime.json）
+scripts\stop-dev.bat       # 停止（读 PID 精确停止，端口兜底）
+scripts\test.bat           # 全量测试（verify + CLI + E2E）
+scripts\build.bat          # 构建（前端 dist + 二进制 dist\）
 ```
 
 ## 测试
