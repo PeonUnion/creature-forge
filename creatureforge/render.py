@@ -34,7 +34,6 @@ OUTLINE = (90, 130, 170)   # body outline color
 def canvas():
     image = Image.new("RGB", (W, H), BG)
     draw = ImageDraw.Draw(image)
-    draw.line([(160, FLOOR_Y), (800, FLOOR_Y)], fill=GUIDE, width=2)
     return image, draw
 
 

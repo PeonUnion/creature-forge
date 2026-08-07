@@ -102,16 +102,18 @@ class Api(Protocol):
     def preset_update(self, preset_id: str, data: Preset) -> str: ...
     def preset_delete(self, preset_id: str) -> str: ...
 
-    # -- 3D 渲染（返回 data_url / frames / gif） --
+    # -- 3D 渲染（返回 data_url / frames / gif）--
+    # 相机参数（业界标准轨道相机，固定 FOV）：yaw 方位角 0-360 / pitch 俯仰角 -89..89 /
+    # dist 距离倍数（相对自动适配基准，1=模型占垂直视野 76%）/ pan 屏幕平移。
     def render_skeleton3d(self, species_id: str, *, yaw: float = 0, pitch: float = 0,
-                          dist: float = 600, zoom: float = 1, pan_x: float = 0, pan_y: float = 0,
+                          dist: float = 1.0, pan_x: float = 0, pan_y: float = 0,
                           body: dict | None = None) -> str: ...
     def render_motion3d(self, action_id: str, *, species: str | None = None, yaw: float = 0,
-                        pitch: float = 0, dist: float = 600, zoom: float = 1, pan_x: float = 0,
+                        pitch: float = 0, dist: float = 1.0, pan_x: float = 0,
                         pan_y: float = 0, frame: int = 0, gif: bool = False,
                         frames: bool = False) -> dict: ...
     def render_preset3d(self, preset_ref: str, *, species: str | None = None,
                         body: dict | None = None, actions: dict | None = None,
                         action_id: str | None = None, yaw: float = 0, pitch: float = 0,
-                        dist: float = 600, zoom: float = 1, pan_x: float = 0, pan_y: float = 0,
+                        dist: float = 1.0, pan_x: float = 0, pan_y: float = 0,
                         frame: int = 0, gif: bool = False, frames: bool = False) -> dict: ...

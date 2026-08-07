@@ -137,14 +137,14 @@ def cmd_render(args) -> None:
     out = Path(args.out)
     if args.mode == "skeleton":
         data_url = svc.render_skeleton3d(
-            args.id, yaw=args.yaw, pitch=args.pitch, dist=args.dist, zoom=args.zoom,
+            args.id, yaw=args.yaw, pitch=args.pitch, dist=args.dist,
             pan_x=args.pan_x, pan_y=args.pan_y,
             body=_parse_kv(args.body) or None)
         _save_data_url(out, data_url)
     elif args.mode == "motion":
         result = svc.render_motion3d(
             args.id, species=args.species, yaw=args.yaw, pitch=args.pitch, dist=args.dist,
-            zoom=args.zoom, pan_x=args.pan_x, pan_y=args.pan_y,
+            pan_x=args.pan_x, pan_y=args.pan_y,
             gif=args.gif, frames=False)
         if "gif" in result:
             _save_data_url(out, result["gif"])
@@ -153,7 +153,7 @@ def cmd_render(args) -> None:
     elif args.mode == "preset":
         result = svc.render_preset3d(
             args.id, action_id=args.action, yaw=args.yaw, pitch=args.pitch, dist=args.dist,
-            zoom=args.zoom, pan_x=args.pan_x, pan_y=args.pan_y, gif=args.gif)
+            pan_x=args.pan_x, pan_y=args.pan_y, gif=args.gif)
         if "gif" in result:
             _save_data_url(out, result["gif"])
         else:
@@ -162,7 +162,7 @@ def cmd_render(args) -> None:
         result = svc.render_preset3d(
             "live", species=args.species, body=_parse_kv(args.body) or None,
             actions=_parse_kv(args.actions) or None, action_id=args.action,
-            yaw=args.yaw, pitch=args.pitch, dist=args.dist, zoom=args.zoom,
+            yaw=args.yaw, pitch=args.pitch, dist=args.dist,
             pan_x=args.pan_x, pan_y=args.pan_y, gif=args.gif)
         if "gif" in result:
             _save_data_url(out, result["gif"])
@@ -174,9 +174,8 @@ def cmd_render(args) -> None:
 
 def _add_render_opts(sp) -> None:
     sp.add_argument("--yaw", type=float, default=0, help="水平角 0-360")
-    sp.add_argument("--pitch", type=float, default=0, help="俯仰角 -90..90")
-    sp.add_argument("--dist", type=float, default=600, help="相机距离（拉近放大/拉远缩小）")
-    sp.add_argument("--zoom", type=float, default=1)
+    sp.add_argument("--pitch", type=float, default=0, help="俯仰角 -89..89")
+    sp.add_argument("--dist", type=float, default=1, help="距离倍数（1=自动适配，大于 1 拉远、小于 1 拉近）")
     sp.add_argument("--pan-x", type=float, default=0, dest="pan_x")
     sp.add_argument("--pan-y", type=float, default=0, dest="pan_y")
     sp.add_argument("--out", required=True, help="输出文件（.png / .gif）")

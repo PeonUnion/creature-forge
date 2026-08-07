@@ -2,7 +2,7 @@
 """CreatureForge — 3D 骨架数据 + FK 投影渲染引擎。
 
 3D 坐标系（x 左右 / y 上下 / z 前后），关节旋转驱动动作（FK），
-任意视角（yaw/pitch/dist/zoom 透视投影）渲染 PNG/GIF。
+任意视角（yaw/pitch/dist 固定 FOV 轨道相机）渲染 PNG/GIF。
 
 数据流：
     skeleton.json（fk_tree/fk_local 骨向量）+ default.json（positions_3d 体型）
@@ -188,48 +188,84 @@ def _build_fk_local(joints3d: dict, fk_tree: dict) -> dict[str, list[float]]:
 
 # 默认画布中心（未指定时用标准 960x600；build_skeleton_3d 从 preset canvas 读真实值）
 CAM_CX, CAM_CY = 480.0, 300.0
-# 画布尺寸（与 render.py 一致；自动适配填满用）
+# 画布尺寸（与 render.py 一致）
 _CANVAS_W, _CANVAS_H = 960.0, 600.0
-# 骨架中心（相机坐标系原点；= 画布中心时正交投影精确还原屏幕坐标）
+# 骨架中心（相机 lookAt 目标；= 画布中心时正交投影精确还原屏幕坐标）
 _CENTER = (480.0, 300.0, 0.0)
+# 相机内参（业界标准：固定垂直 FOV，焦距由此推导，不随距离变化 → 拉近不会变鱼眼）
+_FOV_DEG = 45.0
+_FOV_RAD = math.radians(_FOV_DEG)
+_FOCAL = (_CANVAS_H / 2) / math.tan(_FOV_RAD / 2)  # ≈ 724 像素
+# 自动适配（fit-to-view）：模型占垂直视野的比例（首次进入默认视图）
+_FIT_FILL = 0.76
+# 相机近平面（深度小于此值视为在相机后方/过近，剔除）
+_NEAR = 1.0
+# 俯仰角 clamp（±89° 避免 lookAt 与世界 Y 轴平行时的万向锁退化）
+_PITCH_LIMIT = 89.0
+
+
+def _fit_distance(joints3d: dict[str, list[float]],
+                  center: tuple[float, float, float],
+                  fill: float = _FIT_FILL) -> float:
+    """模型包围球 → 相机适配距离：相机在该距离时模型占垂直视野 ``fill`` 比例。
+
+    业界查看器（Sketchfab/Blender 默认）首次打开都会 fit-to-view；用户随后
+    拖动距离滑块得到的是相对此基准的缩放。
+    """
+    cx, cy, cz = center
+    r = max((math.hypot(x - cx, y - cy, z - cz) for x, y, z in joints3d.values()), default=1.0)
+    r = r or 1.0
+    return r / (math.tan(_FOV_RAD / 2) * max(fill, 0.05))
 
 
 def project3d(joints3d: dict[str, list[float]], yaw_deg: float = 0.0,
               pitch_deg: float = 0.0, distance: float = 600.0,
-              zoom: float = 1.0, center: tuple[float, float, float] | None = None,
+              center: tuple[float, float, float] | None = None,
               pan_x: float = 0.0, pan_y: float = 0.0,
               ) -> dict[str, tuple[float, float]]:
-    """轨道相机透视投影：yaw（水平角 0-360）+ pitch（俯仰角 ±90）+ distance（距离）+ pan（平移）。
+    """业界标准轨道相机 + 针孔透视投影（固定 FOV）。
 
-    - 相机绕模型中心旋转，沿视线看向骨架中心（默认画布中心，可传 preset 的 center），先绕 Y 再绕 X。
-    - yaw + pitch 组合覆盖球面任意角度；distance 控制相机距离（近大远小，越近透视越强）。
-    - zoom 额外缩放（焦距倍率），distance 很大时退化为正交（≈现有 front/side）。
-    - pan_x/pan_y：相机观察点平移（像素），等价于移动画面。
-    返回 {joint: (sx, sy)}（画布坐标）。
+    - 相机位置由 yaw/pitch/distance 决定（球坐标，绕模型中心，pitch 向上为正）；
+    - lookAt center，构建 forward/right/up 正交基（标准视图矩阵）；
+    - 透视投影：焦距恒定（FOV=45°），近大远小但 FOV 不随距离变化 → 不会鱼眼畸变；
+    - pan_x/pan_y：屏幕空间平移（像素）；
+    - distance <= 0 → 自动适配（fit-to-view，模型占垂直视野 76%）。
+    返回 {joint: (sx, sy)}（画布坐标）；在相机后方的点被剔除。
     """
     yaw = math.radians(yaw_deg)
-    pitch = math.radians(pitch_deg)
-    cos_y, sin_y = math.cos(yaw), math.sin(yaw)
-    cos_p, sin_p = math.cos(pitch), math.sin(pitch)
+    pitch = math.radians(max(-_PITCH_LIMIT, min(_PITCH_LIMIT, pitch_deg)))
     cx0, cy0, cz0 = center or _CENTER
-    f = max(distance, 1.0) * zoom
+    if distance is None or distance <= 0:
+        distance = _fit_distance(joints3d, (cx0, cy0, cz0))
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    sy_, cy_ = math.sin(yaw), math.cos(yaw)
+    # 相机位置（球坐标）
+    cam_x = cx0 + distance * cp * sy_
+    cam_y = cy0 + distance * sp
+    cam_z = cz0 + distance * cp * cy_
+    # 视图基：forward（相机→目标）、right、up
+    fx, fy, fz = cx0 - cam_x, cy0 - cam_y, cz0 - cam_z
+    fl = math.hypot(fx, fy, fz) or 1.0
+    fx, fy, fz = fx / fl, fy / fl, fz / fl
+    rx, rz = -fz, fx  # right = normalize(cross(forward, up_world))，up_world=(0,1,0)
+    rl = math.hypot(rx, rz) or 1.0
+    rx, rz = rx / rl, rz / rl
+    ry = 0.0
+    ux = ry * fz - rz * fy  # up = cross(right, forward)
+    uy = rz * fx - rx * fz
+    uz = rx * fy - ry * fx
+    f = _FOCAL
+    half_w, half_h = _CANVAS_W / 2, _CANVAS_H / 2
     out: dict[str, tuple[float, float]] = {}
     for name, (x, y, z) in joints3d.items():
-        # 平移到骨架中心坐标系（相机位置由 yaw/pitch/distance 决定，视线看向中心）
-        x -= cx0
-        y -= cy0
-        z -= cz0
-        # 绕 Y：x' = x*cos + z*sin ; z' = -x*sin + z*cos
-        x1 = x * cos_y + z * sin_y
-        z1 = -x * sin_y + z * cos_y
-        # 绕 X：y' = y*cos - z*sin ; z' = y*sin + z*cos
-        y2 = y * cos_p - z1 * sin_p
-        z2 = y * sin_p + z1 * cos_p
-        # 透视除法（相机在 +z=distance，看向原点）+ 相机平移（pan）
-        z_cam = max(distance - z2, 1.0)
-        sx = cx0 + x1 * f / z_cam + pan_x
-        sy = cy0 + y2 * f / z_cam + pan_y
-        out[name] = (sx, sy)
+        vx, vy, vz = x - cam_x, y - cam_y, z - cam_z
+        xc = vx * rx + vy * ry + vz * rz
+        yc = vx * ux + vy * uy + vz * uz
+        zc = vx * fx + vy * fy + vz * fz
+        if zc <= _NEAR:  # 相机后方/过近 → 剔除
+            continue
+        out[name] = (half_w + xc * f / zc + pan_x,
+                     half_h - yc * f / zc + pan_y)
     return out
 
 
@@ -548,70 +584,27 @@ def _propagate_rigid3d(out: dict, base: dict, rigid_chains: list[dict]) -> None:
 
 def render_motion_3d(skel3d: dict, motion3d: dict, yaw_deg: float = 0.0,
                      pitch_deg: float = 0.0, distance: float = 600.0,
-                     zoom: float = 1.0, pan_x: float = 0.0, pan_y: float = 0.0,
+                     pan_x: float = 0.0, pan_y: float = 0.0,
                      params: dict | None = None) -> Image.Image:
-    """渲染 3D 动作的一帧（首帧），支持角度 + 距离 + 平移。"""
+    """渲染 3D 动作的一帧（首帧），业界标准轨道相机（固定 FOV）。"""
     pose = pose_3d(skel3d, motion3d, 0, params)
-    return render_pose(pose, skel3d["bones"], yaw_deg, pitch_deg, distance, zoom,
+    return render_pose(pose, skel3d["bones"], yaw_deg, pitch_deg, distance,
                        center=tuple(skel3d.get("center", _CENTER)), pan_x=pan_x, pan_y=pan_y,
                        head_radius=float(skel3d.get("head_radius", 22.0)))
 
 
-_REF_DIST = 600.0  # 距离基准：dist=基准时模型填满画布 76%；dist 变小=拉近放大、变大=拉远缩小
-
-
-def _autofit_transform(screen_pts: dict[str, tuple[float, float]],
-                       zoom: float = 1.0, pan_x: float = 0.0, pan_y: float = 0.0,
-                       dist: float = 600.0, ref_dist: float = _REF_DIST,
-                       margin: float = 0.12, max_scale: float = 8.0
-                       ) -> tuple[float, float, float]:
-    """根据投影点包围盒计算自动适配：填满画布并居中，距离/缩放/平移按相对量生效。
-
-    以“填满画布 76% 面积”为基准缩放，再乘以用户 zoom（相对缩放）与距离比
-    ref_dist/dist（distance 真实生效：拉近放大、拉远缩小；默认 dist=ref_dist 时
-    模型恰好填满画布）。平移 = 居中偏移 + 用户 pan（相对平移）。这样默认预览大而清晰，
-    相机控制里的 zoom/pan/dist 都按相对量生效。
-    """
-    xs = [p[0] for p in screen_pts.values()]
-    ys = [p[1] for p in screen_pts.values()]
-    minx, maxx, miny, maxy = min(xs), max(xs), min(ys), max(ys)
-    w, h = maxx - minx, maxy - miny
-    if w < 1 or h < 1:
-        return zoom, pan_x, pan_y
-    avail_w = _CANVAS_W * (1 - 2 * margin)
-    avail_h = _CANVAS_H * (1 - 2 * margin)
-    base = min(avail_w / w, avail_h / h)
-    scale = min(max(base * zoom * (ref_dist / max(dist, 1.0)), 0.05), max_scale)
-    cx, cy = (minx + maxx) / 2, (miny + maxy) / 2
-    tx = _CANVAS_W / 2 - cx * scale + pan_x
-    ty = _CANVAS_H / 2 - cy * scale + pan_y
-    return scale, tx, ty
-
-
 def render_pose(pose: dict[str, list[float]], bones: list[list[str]],
                 yaw_deg: float = 0.0, pitch_deg: float = 0.0,
-                distance: float = 600.0, zoom: float = 1.0,
+                distance: float = 600.0,
                 center: tuple[float, float, float] | None = None,
                 pan_x: float = 0.0, pan_y: float = 0.0,
-                autofit: tuple[float, float, float] | None = None,
                 head_radius: float = 22.0) -> Image.Image:
-    """渲染任意 3D 姿势：角度（yaw/pitch）+ 距离（透视）+ 自动适配居中 + zoom/pan 相对量。
-
-    ``autofit``：可传入固定的 (scale, tx, ty) 变换（如 GIF 各帧统一用首帧的适配，
-    避免逐帧独立适配造成缩放抖动）。
-    """
+    """渲染任意 3D 姿势：业界标准轨道相机（固定 FOV），distance<=0 自动适配。"""
     from creatureforge.render import BONE, JOINT, canvas, head, joint, bone
 
     image, draw = canvas()
-    # 先以 zoom=1/pan=0 投影（distance 仅影响透视），再做自动适配（填满画布并居中）
-    screen_pts = project3d(pose, yaw_deg, pitch_deg, distance, 1.0, center=center,
-                           pan_x=0.0, pan_y=0.0)
-    if autofit is not None:
-        scale, tx, ty = autofit
-    else:
-        scale, tx, ty = _autofit_transform(screen_pts, zoom, pan_x, pan_y,
-                                           dist=distance, ref_dist=_REF_DIST)
-    screen_pts = {k: (v[0] * scale + tx, v[1] * scale + ty) for k, v in screen_pts.items()}
+    screen_pts = project3d(pose, yaw_deg, pitch_deg, distance, center=center,
+                           pan_x=pan_x, pan_y=pan_y)
     # 头部椭圆：多首物种（三头飞龙）画出所有头（head / head_left / head_right），需在骨骼之上
     for hk in ("head", "head_left", "head_right"):
         if hk in screen_pts:
@@ -625,19 +618,16 @@ def render_pose(pose: dict[str, list[float]], bones: list[list[str]],
 
 
 def render_view(skel3d: dict, yaw_deg: float = 0.0, pitch_deg: float = 0.0,
-                distance: float = 600.0, zoom: float = 1.0,
+                distance: float = 600.0,
                 pan_x: float = 0.0, pan_y: float = 0.0,
                 width: int = 640, height: int = 480) -> Image.Image:
-    """渲染 3D 骨架：角度（yaw/pitch）+ 距离（透视）+ 自动适配居中 + zoom/pan 相对量。"""
+    """渲染 3D 骨架：业界标准轨道相机（固定 FOV），distance<=0 自动适配。"""
     from creatureforge.render import BONE, JOINT, canvas, head, joint, bone
 
     image, draw = canvas()
     center = tuple(skel3d.get("center", _CENTER))
-    screen_pts = project3d(skel3d["joints"], yaw_deg, pitch_deg, distance, 1.0, center=center,
-                           pan_x=0.0, pan_y=0.0)
-    scale, tx, ty = _autofit_transform(screen_pts, zoom, pan_x, pan_y,
-                                       dist=distance, ref_dist=_REF_DIST)
-    screen_pts = {k: (v[0] * scale + tx, v[1] * scale + ty) for k, v in screen_pts.items()}
+    screen_pts = project3d(skel3d["joints"], yaw_deg, pitch_deg, distance, center=center,
+                           pan_x=pan_x, pan_y=pan_y)
     # 头部椭圆：多首物种（三头飞龙）画出所有头
     hr = float(skel3d.get("head_radius", 22.0))
     for hk in ("head", "head_left", "head_right"):

@@ -31,7 +31,7 @@ const props = defineProps({
   frames: { type: Array, default: () => [] },
   /** 播放速度（帧/秒） */
   fps: { type: Number, default: 6 },
-  /** 相机参数 {yaw,pitch,dist,zoom,panX,panY}，拖拽旋转 + 导出 GIF 用 */
+  /** 相机参数 {yaw,pitch,dist,panX,panY}（dist 为距离倍数），拖拽旋转 + 导出 GIF 用 */
   cam: { type: Object, default: () => ({}) },
   /** 物种 ID（导出 GIF 需要） */
   speciesId: { type: String, default: '' },
@@ -79,7 +79,7 @@ async function exportGif() {
   try {
     const c = props.cam || {}
     const qs = `species=${encodeURIComponent(props.speciesId)}&yaw=${c.yaw ?? 0}&pitch=${c.pitch ?? 0}` +
-               `&dist=${c.dist ?? 600}&zoom=${c.zoom ?? 1}&pan_x=${c.panX ?? 0}&pan_y=${c.panY ?? 0}&gif=1`
+               `&dist=${c.dist ?? 1}&pan_x=${c.panX ?? 0}&pan_y=${c.panY ?? 0}&gif=1`
     const r = await api.renderMotion3d(props.motionId, qs)
     if (r.gif) {
       const a = document.createElement('a')

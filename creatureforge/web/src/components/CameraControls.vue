@@ -37,11 +37,11 @@
 import { ref, computed } from 'vue'
 
 /**
- * 3D 相机控制（轨道相机：yaw/pitch/dist 决定相机位置，绕模型中心任意角度+距离查看）。
+ * 3D 相机控制（轨道相机：yaw/pitch/dist 决定相机位置，固定 FOV，任意角度+距离查看）。
  * - 常驻：快捷视角按钮（正面/侧面/背面/45°/俯视/微仰）
- * - 面板：相机（yaw/pitch/dist/zoom/pan）+ 重置
+ * - 面板：相机（yaw/pitch/dist/pan）+ 重置
  * - 配合预览图拖拽旋转（见 useOrbitDrag）
- * v-model 绑定相机状态 { yaw, pitch, dist, zoom, panX, panY }。
+ * v-model 绑定相机状态 { yaw, pitch, dist, panX, panY }（dist 为距离倍数，1=自动适配）。
  */
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -53,7 +53,7 @@ const panelOpen = ref(false)
 const cam = computed(() => props.modelValue)
 const set = (key, val) => emit('update:modelValue', { ...props.modelValue, [key]: val })
 
-const DEFAULT_CAM = { yaw: 30, pitch: 12, dist: 600, zoom: 1, panX: 0, panY: 0 }
+const DEFAULT_CAM = { yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 }
 function reset() { emit('update:modelValue', { ...DEFAULT_CAM }) }
 
 const presets = [
@@ -72,12 +72,11 @@ const activePreset = computed(() => {
 })
 
 // 统一面板项（骨架预览与动作预览一致，与 compact 无关；compact 仅影响样式）
-// yaw+pitch 覆盖球面任意角度；dist 覆盖任意距离（拉近放大/拉远缩小，默认 600 时模型填满画布）
+// yaw+pitch 覆盖球面任意角度；dist 为距离倍数（1=自动适配，>1 拉远、<1 拉近），固定 FOV 不畸变
 const orbitItems = [
   { key: 'yaw', label: '水平角', unit: '°', min: 0, max: 360, step: 1 },
   { key: 'pitch', label: '俯仰角', unit: '°', min: -90, max: 90, step: 1 },
-  { key: 'dist', label: '距离', unit: '', min: 100, max: 3000, step: 20 },
-  { key: 'zoom', label: '缩放', unit: '×', min: 0.5, max: 2, step: 0.05 },
+  { key: 'dist', label: '距离', unit: '×', min: 0.2, max: 5, step: 0.05 },
   { key: 'panX', label: '平移 X', unit: '', min: -300, max: 300, step: 10 },
   { key: 'panY', label: '平移 Y', unit: '', min: -200, max: 200, step: 10 },
 ]
