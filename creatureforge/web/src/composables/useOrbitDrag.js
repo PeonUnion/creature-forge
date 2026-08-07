@@ -24,7 +24,7 @@ export function useOrbitDrag({ getCam, setCam, onDragStart, onDragEnd }) {
     const dx = e.clientX - sx
     const dy = e.clientY - sy
     const yaw = (((syaw + dx * 0.5) % 360) + 360) % 360
-    const pitch = clamp(spitch + dy * 0.5, -60, 60)
+    const pitch = clamp(spitch + dy * 0.5, -90, 90)
     setCam({ ...getCam(), yaw, pitch })
   }
 

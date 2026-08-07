@@ -109,27 +109,25 @@ class ApiService:
 
     def render_skeleton3d(self, species_id: str, *, yaw: float = 0, pitch: float = 0,
                           dist: float = 600, zoom: float = 1, pan_x: float = 0, pan_y: float = 0,
-                          cam_x: float = 0, cam_y: float = 0, cam_z: float = 0,
                           body: dict | None = None) -> str:
         """3D 骨架渲染（应用体型参数 body），返回 PNG data_url。"""
-        from .skeleton3d import build_skeleton_3d, project3d, render_pose, _autofit_transform
+        from .skeleton3d import build_skeleton_3d, project3d, render_pose, _autofit_transform, _REF_DIST
         skel3d = build_skeleton_3d(species_id, body=body, species_root=self.species._root)
         center = tuple(skel3d.get("center", (480.0, 300.0, 0.0)))
         hr = float(skel3d.get("head_radius", 22.0))
         base = {j: list(v) for j, v in skel3d["joints"].items()}
-        base_pts = project3d(base, yaw, pitch, dist, 1.0, center, 0.0, 0.0, cam_x, cam_y, cam_z)
-        af = _autofit_transform(base_pts, zoom, pan_x, pan_y)
-        img = render_pose(base, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y, cam_x, cam_y, cam_z,
+        base_pts = project3d(base, yaw, pitch, dist, 1.0, center, 0.0, 0.0)
+        af = _autofit_transform(base_pts, zoom, pan_x, pan_y, dist=dist, ref_dist=_REF_DIST)
+        img = render_pose(base, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y,
                           autofit=af, head_radius=hr)
         return image_to_data_url(img)
 
     def render_motion3d(self, action_id: str, *, species: str | None = None, yaw: float = 0,
                         pitch: float = 0, dist: float = 600, zoom: float = 1, pan_x: float = 0,
-                        pan_y: float = 0, cam_x: float = 0, cam_y: float = 0, cam_z: float = 0,
-                        frame: int = 0, gif: bool = False,
+                        pan_y: float = 0, frame: int = 0, gif: bool = False,
                         frames: bool = False) -> dict:
         """3D 动作渲染。返回 {'data_url'} 或 {'frames':[...],'frame_count'} 或 {'gif':...}。"""
-        from .skeleton3d import build_skeleton_3d, pose_3d, project3d, render_pose, _autofit_transform
+        from .skeleton3d import build_skeleton_3d, pose_3d, project3d, render_pose, _autofit_transform, _REF_DIST
         from PIL import Image
         if species:
             motion = self.species.get_action(species, action_id)
@@ -144,21 +142,21 @@ class ApiService:
         hr = float(skel3d.get("head_radius", 22.0))
         n = int(motion.get("frame_count", 8))
         base_pose = pose_3d(skel3d, motion, 0)
-        base_pts = project3d(base_pose, yaw, pitch, dist, 1.0, center, 0.0, 0.0, cam_x, cam_y, cam_z)
-        af = _autofit_transform(base_pts, zoom, pan_x, pan_y)
+        base_pts = project3d(base_pose, yaw, pitch, dist, 1.0, center, 0.0, 0.0)
+        af = _autofit_transform(base_pts, zoom, pan_x, pan_y, dist=dist, ref_dist=_REF_DIST)
         if frames:
             urls = []
             for i in range(n):
                 p = pose_3d(skel3d, motion, i)
                 urls.append(image_to_data_url(
-                    render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y, cam_x, cam_y, cam_z,
+                    render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y,
                                 autofit=af, head_radius=hr)))
             return {"ok": True, "frames": urls, "frame_count": n, "species": species_id}
         if gif:
             imgs = []
             for i in range(n):
                 p = pose_3d(skel3d, motion, i)
-                imgs.append(render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y, cam_x, cam_y, cam_z,
+                imgs.append(render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y,
                                         autofit=af, head_radius=hr).resize((640, 400), Image.Resampling.NEAREST))
             buf = io.BytesIO()
             imgs[0].save(buf, format="GIF", save_all=True, append_images=imgs[1:],
@@ -166,7 +164,7 @@ class ApiService:
             return {"ok": True, "gif": "data:image/gif;base64," + base64.b64encode(buf.getvalue()).decode(),
                     "species": species_id}
         p = pose_3d(skel3d, motion, frame)
-        img = render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y, cam_x, cam_y, cam_z,
+        img = render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y,
                           autofit=af, head_radius=hr)
         return {"ok": True, "data_url": image_to_data_url(img), "species": species_id}
 
@@ -174,14 +172,13 @@ class ApiService:
                         body: dict | None = None, actions: dict | None = None,
                         action_id: str | None = None, yaw: float = 0, pitch: float = 0,
                         dist: float = 600, zoom: float = 1, pan_x: float = 0, pan_y: float = 0,
-                        cam_x: float = 0, cam_y: float = 0, cam_z: float = 0,
                         frame: int = 0, gif: bool = False, frames: bool = False) -> dict:
         """3D 预设渲染（应用体型 body + 动作参数 actions）。
 
         preset_ref='live' 用传参（未保存实时预览），否则读 presets/<id>.json。
         有 action_id → 动作帧/GIF；无 → 骨架。
         """
-        from .skeleton3d import build_skeleton_3d, pose_3d, project3d, render_pose, _autofit_transform
+        from .skeleton3d import build_skeleton_3d, pose_3d, project3d, render_pose, _autofit_transform, _REF_DIST
         from PIL import Image
         if preset_ref == "live":
             if not species:
@@ -202,35 +199,35 @@ class ApiService:
             n = int(motion.get("frame_count", 8))
             params = (ac or {}).get(action_id, {})
             base_pose = pose_3d(skel3d, motion, 0, params=params)
-            base_pts = project3d(base_pose, yaw, pitch, dist, 1.0, center, 0.0, 0.0, cam_x, cam_y, cam_z)
-            af = _autofit_transform(base_pts, zoom, pan_x, pan_y)
+            base_pts = project3d(base_pose, yaw, pitch, dist, 1.0, center, 0.0, 0.0)
+            af = _autofit_transform(base_pts, zoom, pan_x, pan_y, dist=dist, ref_dist=_REF_DIST)
             if frames:
                 urls = []
                 for i in range(n):
                     p = pose_3d(skel3d, motion, i, params=params)
                     urls.append(image_to_data_url(
-                        render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y, cam_x, cam_y, cam_z,
+                        render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y,
                                     autofit=af, head_radius=hr)))
                 return {"ok": True, "frames": urls, "frame_count": n}
             if gif:
                 imgs = []
                 for i in range(n):
                     p = pose_3d(skel3d, motion, i, params=params)
-                    imgs.append(render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y, cam_x, cam_y, cam_z,
+                    imgs.append(render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y,
                                             autofit=af, head_radius=hr).resize((640, 400), Image.Resampling.NEAREST))
                 buf = io.BytesIO()
                 imgs[0].save(buf, format="GIF", save_all=True, append_images=imgs[1:],
                              duration=180, loop=0, disposal=2)
                 return {"ok": True, "gif": "data:image/gif;base64," + base64.b64encode(buf.getvalue()).decode()}
             p = pose_3d(skel3d, motion, frame, params=params)
-            img = render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y, cam_x, cam_y, cam_z,
+            img = render_pose(p, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y,
                               autofit=af, head_radius=hr)
             return {"ok": True, "data_url": image_to_data_url(img)}
         # 骨架渲染（应用体型）
         base = {j: list(v) for j, v in skel3d["joints"].items()}
-        base_pts = project3d(base, yaw, pitch, dist, 1.0, center, 0.0, 0.0, cam_x, cam_y, cam_z)
-        af = _autofit_transform(base_pts, zoom, pan_x, pan_y)
-        img = render_pose(base, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y, cam_x, cam_y, cam_z,
+        base_pts = project3d(base, yaw, pitch, dist, 1.0, center, 0.0, 0.0)
+        af = _autofit_transform(base_pts, zoom, pan_x, pan_y, dist=dist, ref_dist=_REF_DIST)
+        img = render_pose(base, skel3d["bones"], yaw, pitch, dist, zoom, center, pan_x, pan_y,
                           autofit=af, head_radius=hr)
         return {"ok": True, "data_url": image_to_data_url(img)}
 
