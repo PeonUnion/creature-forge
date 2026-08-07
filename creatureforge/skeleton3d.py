@@ -223,9 +223,9 @@ def project3d(joints3d: dict[str, list[float]], yaw_deg: float = 0.0,
               center: tuple[float, float, float] | None = None,
               pan_x: float = 0.0, pan_y: float = 0.0,
               ) -> dict[str, tuple[float, float]]:
-    """业界标准轨道相机 + 针孔透视投影（固定 FOV）。
+    """轨道相机 + 针孔透视投影（固定 FOV）。项目坐标系约定：Y 向下（同屏幕）、Z 朝观察者。
 
-    - 相机位置由 yaw/pitch/distance 决定（球坐标，绕模型中心，pitch 向上为正）；
+    - 相机位置由 yaw/pitch/distance 决定（球坐标，绕模型中心；pitch 正 = 相机上移俯视）；
     - lookAt center，构建 forward/right/up 正交基（标准视图矩阵）；
     - 透视投影：焦距恒定（FOV=45°），近大远小但 FOV 不随距离变化 → 不会鱼眼畸变；
     - pan_x/pan_y：屏幕空间平移（像素）；
@@ -239,9 +239,9 @@ def project3d(joints3d: dict[str, list[float]], yaw_deg: float = 0.0,
         distance = _fit_distance(joints3d, (cx0, cy0, cz0))
     cp, sp = math.cos(pitch), math.sin(pitch)
     sy_, cy_ = math.sin(yaw), math.cos(yaw)
-    # 相机位置（球坐标）
+    # 相机位置（球坐标；Y-down：pitch 正 → 相机上移，即 cam_y 数值减小）
     cam_x = cx0 + distance * cp * sy_
-    cam_y = cy0 + distance * sp
+    cam_y = cy0 - distance * sp
     cam_z = cz0 + distance * cp * cy_
     # 视图基：forward（相机→目标）、right、up
     fx, fy, fz = cx0 - cam_x, cy0 - cam_y, cz0 - cam_z
@@ -264,8 +264,9 @@ def project3d(joints3d: dict[str, list[float]], yaw_deg: float = 0.0,
         zc = vx * fx + vy * fy + vz * fz
         if zc <= _NEAR:  # 相机后方/过近 → 剔除
             continue
+        # Y-down：yc 与屏幕 y 同向（不翻转），保证项目数据（头 Y 小、脚 Y 大）显示正确
         out[name] = (half_w + xc * f / zc + pan_x,
-                     half_h - yc * f / zc + pan_y)
+                     half_h + yc * f / zc + pan_y)
     return out
 
 
