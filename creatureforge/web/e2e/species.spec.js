@@ -63,6 +63,10 @@ test.describe('物种管理（全量 E2E）', () => {
       const a = document.querySelector('.mp-sprite')?.getAnimations?.()[0]
       return a ? a.playState : 'none'
     })).toBe('running')
+    // 画面真实在动且方向正确：background-position 从 0 向左位移（sprite 逐帧播放）
+    await expect.poll(() => page.evaluate(() => {
+      return getComputedStyle(document.querySelector('.mp-sprite')).backgroundPosition
+    }), { timeout: 5000 }).not.toBe('0px 0px')
     await page.locator('button', { hasText: '暂停' }).click()
     // GIF 导出（触发浏览器下载）
     const dl = page.waitForEvent('download', { timeout: 60_000 })

@@ -52,18 +52,22 @@ const gifLoading = ref(false)
 const frameIndex = ref(0)
 let badgeRaf = null
 
-// 播放：纯 CSS 动画（steps(N) 逐帧 + background-position 位移）。
+// 播放：纯 CSS 动画（steps 逐帧 + background-position 位移）。
 // 零 JS 定时器、单图单次解码、GPU 合成；暂停用 animation-play-state（完美定格）。
+// ⚠️ background-position 百分比公式：偏移 = (容器宽 - 背景图宽) * p。背景图宽 = N*容器宽，
+//    0% → 偏移 0（帧0）；100% → 偏移 -(N-1)*容器宽（帧 N-1）。steps(N-1) 每次精确跳一帧。
 const spriteStyle = computed(() => {
-  if (!props.sprite || !props.frameCount) return {}
-  const dur = (props.frameCount / Math.max(props.fps, 1)).toFixed(3)
+  const n = props.frameCount || 0
+  if (!props.sprite || !n) return {}
+  const steps = Math.max(n - 1, 1)
+  const dur = (n / Math.max(props.fps, 1)).toFixed(3)
   return {
     width: '100%',
     aspectRatio: `${props.frameW || 1} / ${props.frameH || 1}`,
     backgroundImage: `url(${props.sprite})`,
-    backgroundSize: `${props.frameCount * 100}% 100%`,
+    backgroundSize: `${n * 100}% 100%`,
     backgroundRepeat: 'no-repeat',
-    animation: `mp-play ${dur}s steps(${props.frameCount}) infinite`,
+    animation: `mp-play ${dur}s steps(${steps}) infinite`,
     animationPlayState: playing.value ? 'running' : 'paused',
   }
 })
@@ -155,6 +159,6 @@ onBeforeUnmount(stop)
 <style>
 @keyframes mp-play {
   0% { background-position: 0 0; }
-  100% { background-position: -100% 0; }
+  100% { background-position: 100% 0; }
 }
 </style>
