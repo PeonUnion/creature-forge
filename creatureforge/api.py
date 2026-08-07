@@ -122,11 +122,17 @@ class ApiService:
                 "head_radius": float(skel3d.get("head_radius", 22.0))}
 
     def motion3d_data(self, action_id: str, *, species: str | None = None,
-                      body: dict | None = None, params: dict | None = None) -> dict:
+                      body: dict | None = None, params: dict | None = None,
+                      transition_from: str | None = None,
+                      transition_frames: int = 6) -> dict:
         """返回动作每帧 3D 关节数据（前端 WebGL 动画播放用，不渲染 PNG）。
 
         body 为体型参数、params 为动作参数（均应用）；frames 为每帧 {关节名: [x,y,z]}
         （Y-down 项目坐标），bones 连接对，frame_count/fps。
+
+        transition_from：可选，上一动作 id。切换动作时在其帧前拼接过渡段
+        （上一动作尾帧 → 本动作首帧 逐关节线性插值），数据全部来自两个动作 JSON，
+        过渡帧数为 transition_frames（默认 6）。
         """
         from .skeleton3d import build_skeleton_3d, pose_3d
         if species:
@@ -141,10 +147,33 @@ class ApiService:
         n = int(motion.get("frame_count", 8))
         p = params or {}
         frames = [pose_3d(skel3d, motion, i, params=p) for i in range(n)]
+        # 过渡段：上一动作尾帧 → 本动作首帧 逐关节插值（不硬编码，数值来自两动作真实 JSON）
+        n_trans = 0
+        if transition_from and transition_from != action_id:
+            try:
+                if species:
+                    fm = self.species.get_action(species, transition_from)
+                else:
+                    found = self.species.find_action(transition_from)
+                    fm = found[1] if found else None
+                if fm is not None:
+                    fn = int(fm.get("frame_count", 8))
+                    tail = pose_3d(skel3d, fm, max(0, fn - 1))
+                    head = frames[0]
+                    n_trans = max(1, min(int(transition_frames), n))
+                    trans = []
+                    for k in range(1, n_trans + 1):
+                        t = k / (n_trans + 1)
+                        trans.append({j: [tail[j][a] + (head[j][a] - tail[j][a]) * t
+                                          for a in range(3)] for j in head})
+                    frames = trans + frames
+            except Exception:
+                n_trans = 0  # 过渡数据不可用则忽略，仅返回动作本身
         return {"ok": True,
                 "bones": [list(b) for b in skel3d["bones"]],
                 "frames": frames,
-                "frame_count": n,
+                "frame_count": n + n_trans,
+                "transition_frames": n_trans,
                 "fps": int(motion.get("fps", 6)) or 6,
                 "center": list(skel3d.get("center", (480.0, 300.0, 0.0))),
                 "head_radius": float(skel3d.get("head_radius", 22.0))}

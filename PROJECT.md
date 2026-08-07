@@ -26,7 +26,7 @@ creatureforge/
       skeleton.json           ← 骨骼拓扑：关节、骨骼、链、参数链、约束
       preset_schema.json      ← 预设 schema（随骨架自动派生）
       default.json            ← 默认姿态/体型（positions_3d 按真实 CMU 重建）
-      actions3d/walk3d.json   ← 3D 动作（FK 关节旋转，真实 CMU 数据）
+      actions3d/*.json   ← 3D 动作（FK 关节旋转，真实 CMU 数据：walk/run/jump/crawl/idle）
   presets/                    ← 预设（物种实例：体型 + 动作幅度）
     <preset_id>.json          ← {species, body, actions}（schema 由物种派生，不落盘）
   web/                        ← Vue 3 前端（物种 / 预设 独立入口）

@@ -12,7 +12,7 @@
 - **3D 相机改造**：轨道相机（预览图拖拽旋转 + 快捷按钮 + 收纳面板），`useOrbitDrag`（isDragging 必须 ref）。
 - **清理过时内容**：skins / packaging / build / webflow 发布链 / 旧参考资产；保留 `prototype/`（Godot demo）、`scripts/mocap/`、`verify_motions3d.py`。
 - **前端动作预览**：`MotionPreview.vue` 封装播放 + 导出 GIF（后端 `gif=1`）。
-- **全量测试**：E2E 10 用例全通过（物种/预设 CRUD、渲染、GIF、相机）；CLI 流程化测试 5 用例（`scripts/test_cli.py`，物种/动作/预设/渲染/错误处理，数据隔离 `test-data-cli/`）。
+- **全量测试**：E2E 11 用例全通过（物种/预设 CRUD、渲染、GIF、相机、多动作预览+过渡段）；CLI 流程化测试 5 用例（`scripts/test_cli.py`，物种/动作/预设/渲染/错误处理，数据隔离 `test-data-cli/`）。
 - **跨平台发布**：pyinstaller 构建嵌入 web 的 `creature-forge-server`/`creature-forge-cli` 二进制；GitHub Actions（`.github/workflows/release.yml`）矩阵产出 Linux/Windows/macOS，`v*` tag 触发（含 `-rc/-beta/-alpha` 预览版）；CHANGELOG 采用 Keep a Changelog + SemVer，Release Notes 按 tag 自动提取。
 
 ## 二、当前结构
@@ -21,7 +21,7 @@
 |---|---|
 | `creatureforge/api.py / interfaces.py / cli.py / server.py` | 统一 Api（CLI+HTTP 共享）+ 薄路由 + CLI |
 | `creatureforge/species.py / presets.py / skeleton3d.py / motion.py` | 物种 / 预设 / 3D 引擎（FK/IK）/ DSL |
-| `data/species/human/` | 骨骼 + default（CMU 体型）+ actions3d/walk3d |
+| `data/species/human/` | 骨骼 + default（CMU 体型）+ actions3d/（walk/run/jump/crawl/idle 真实动捕） |
 | `data/presets/` | 预设（物种实例：body + actions；运行时用户数据） |
 | `creatureforge/web/` | Vue 3 前端（物种 / 预设独立入口） |
 | `scripts/mocap/` | CMU 工具链（bvh_parser / rebuild_skeleton_cmu / extract_kin / compare_motion） |

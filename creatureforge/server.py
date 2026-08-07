@@ -175,9 +175,12 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         if qs.get("data", ["0"])[0] in ("1", "true"):
             body = json.loads(qs.get("body", ["{}"])[0])
             params = json.loads(qs.get("params", ["{}"])[0])
+            transition_from = qs.get("transition_from", [None])[0]
+            transition_frames = int(qs.get("transition_frames", ["6"])[0])
             try:
                 return self._json(self.api.motion3d_data(
-                    parts[0], species=species_q, body=body, params=params))
+                    parts[0], species=species_q, body=body, params=params,
+                    transition_from=transition_from, transition_frames=transition_frames))
             except KeyError as e:
                 return self._json({"ok": False, "error": str(e)}, 404)
             except Exception as e:

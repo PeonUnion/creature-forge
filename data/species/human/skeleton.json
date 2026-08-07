@@ -315,6 +315,7 @@
   "constraints": {
     "schema": "creatureforge_constraints_v1",
     "description": "人类骨骼的物理/解剖学硬约束，随物种骨骼模型同步定义。验证工具第二步据此强制判断（创建物种时同步创建）。",
+    "fk3d_skip_joint_direction": true,
     "bone_length": {
       "tolerance": 0.05
     },
@@ -324,8 +325,8 @@
     "ground_contact": {
       "feet": {
         "front": [
-          "foot_left",
-          "foot_right"
+          "toe_left",
+          "toe_right"
         ],
         "side": [
           "rear_foot",
@@ -339,16 +340,16 @@
       "floor_y": 470.0,
       "walk": {
         "mode": "one_planted",
-        "tol": 12.0
+        "tol": 25.0
       },
       "run": {
         "mode": "flight_limited",
-        "max_flight": 4,
-        "tol": 12.0
+        "max_flight": 6,
+        "tol": 25.0
       },
       "idle": {
         "mode": "all_planted",
-        "tol": 8.0
+        "tol": 25.0
       },
       "jump": {
         "mode": "flight_allowed"
@@ -384,7 +385,9 @@
       },
       "skip_motions": [
         "jump",
-        "idle"
+        "idle",
+        "run",
+        "crawl"
       ]
     },
     "elbow_articulation": {

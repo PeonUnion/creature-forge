@@ -229,6 +229,175 @@ def find_walk_cycle(root, data, nf, min_gap=40):
             strikes.append(i)
     return strikes, toe_y
 
+def find_strikes(root, data, nf, joint='LeftToeBase', min_gap=40, W=4):
+    """支撑末端(脚/手)着地事件：下包络局部最小，间隔>=min_gap 去重。"""
+    ys = [fk_world(root, data[f])[joint][1] for f in range(nf)]
+    cand = []
+    for i in range(nf):
+        lo, hi = max(0, i-W), min(nf, i+W+1)
+        if i > 0 and i < nf-1 and ys[i] == min(ys[lo:hi]) and ys[i] < ys[i-1] and ys[i] <= ys[i+1]:
+            cand.append(i)
+    strikes = []
+    for i in cand:
+        if strikes and i - strikes[-1] < min_gap:
+            if ys[i] < ys[strikes[-1]]:
+                strikes[-1] = i
+        else:
+            strikes.append(i)
+    return strikes, ys
+
+def best_cycle_frames(root, data, strikes, N, min_cycle=40):
+    """所有着地对中选姿势差最小(闭环) → 均匀采样 N 帧。"""
+    def pose_vec(fr):
+        ch = frame_channels(root, data[fr]); v = []
+        for cmu in NAMES + ['Hips']:
+            v += list(ch[cmu]['rot'])
+        return v
+    best = None
+    for i in range(len(strikes)):
+        for j in range(i+1, len(strikes)):
+            if strikes[j] - strikes[i] < min_cycle: continue
+            d = math.dist(pose_vec(strikes[i]), pose_vec(strikes[j]))
+            if best is None or d < best[0]:
+                best = (d, strikes[i], strikes[j])
+    d0, c0, c1 = best
+    idxs = [c0 + int(round(k*(c1-c0)/N)) for k in range(N)]
+    return idxs, (c0, c1, d0)
+
+def find_jump_window(root, data, nf, pre=8, post=10):
+    """跳跃窗口：最长腾空段(双脚离地)前后扩展(起跳预备+落地站稳)。"""
+    def toe_min(i):
+        fk = fk_world(root, data[i])
+        return min(fk['LeftToeBase'][1], fk['RightToeBase'][1])
+    lows = [toe_min(i) for i in range(nf)]
+    floor = min(lows)
+    segs, cur = [], []
+    for i in range(nf):
+        if lows[i] > floor + 0.4:
+            cur.append(i)
+        else:
+            if len(cur) >= 5: segs.append(cur)
+            cur = []
+    if len(cur) >= 5: segs.append(cur)
+    seg = max(segs, key=len)
+    return max(0, seg[0]-pre), min(nf-1, seg[-1]+post)
+
+def find_idle_window(root, data, nf, N, smooth=60):
+    """待机呼吸：平滑骨盆y找峰谷对(间隔120~800帧)，选幅度最大 → 均匀采样N帧。"""
+    hip = [data[i][1] for i in range(nf)]
+    sm = []
+    for i in range(nf):
+        a, b = max(0, i-smooth), min(nf, i+smooth+1)
+        sm.append(sum(hip[a:b])/(b-a))
+    peaks = [i for i in range(1, nf-1) if sm[i] > sm[i-1] and sm[i] >= sm[i+1]]
+    cand = []
+    for k in range(len(peaks)-1):
+        a, b = peaks[k], peaks[k+1]
+        if 120 <= b-a <= 800:
+            amp = max(sm[a:b]) - min(sm[a:b])
+            cand.append((amp, b-a, a, b))
+    cand.sort(key=lambda t: -t[0])
+    _, gap, a0, b0 = cand[0]
+    return [a0 + int(round(k*(b0-a0)/N)) for k in range(N)], (a0, b0, gap)
+
+def write_action(action_id, bvh, strategy='cycle', N=16, min_gap=40,
+                 joint='LeftToeBase', title=None, description=None, samples=None, min_cycle=40):
+    """通用动作转换：从真实 BVH 提取采样帧 → 生成 <action_id>.json（纯 FK，不硬编码）。"""
+    root, nf, ft, data = parse_bvh(Path(bvh).read_text())
+    base = build_cmu_base(root)
+    S = scale_factor(base)
+    # 骨盆屏幕 y = 470 - p*S（CMU 世界 y 地面=0 的真实高度），基准由 base 骨架站立骨盆决定
+    dflt = json.loads((WE/'data/species/human/default.json').read_text(encoding='utf-8'))
+    base_pelvis_y = dflt['positions_3d']['pelvis'][1]
+    stand_px = FLOOR_Y - base_pelvis_y  # base 骨盆离地像素 ≈242
+    if samples is not None:
+        idxs, info = list(samples), f"显式采样帧 {samples}"
+    elif strategy == 'jump':
+        a, b = find_jump_window(root, data, nf)
+        idxs = [a + int(round(k*(b-a)/N)) for k in range(N)]
+        info = f"跳跃窗口 [{a},{b}] ({b-a}帧)"
+    elif strategy == 'idle':
+        idxs, (a0, b0, gap) = find_idle_window(root, data, nf, N)
+        info = f"呼吸段 [{a0},{b0}] 周期 {gap}帧"
+    elif strategy == 'cycle':
+        strikes, _ = find_strikes(root, data, nf, joint, min_gap)
+        idxs, (c0, c1, d0) = best_cycle_frames(root, data, strikes, N, min_cycle)
+        info = f"周期 [{c0},{c1}] 姿势差 {d0:.1f}° 着地帧 {strikes}"
+    else:
+        raise ValueError(f"未知策略 {strategy}")
+    print(f"[{action_id}] {info}  → 采样 {len(idxs)} 帧")
+    # 参考根位：去均值原地循环
+    zref = sum(data[i][2] for i in idxs)/N
+    xref = sum(data[i][0] for i in idxs)/N
+    yref = data[idxs[0]][1]
+    rot_tables = {}
+    root_x, root_y, root_z = [], [], []
+    for fr in idxs:
+        ch = frame_channels(root, data[fr])
+        for cmu, wej in ROT_MAP.items():
+            zr, yr, xr = ch[cmu]['rot']
+            d = rot_tables.setdefault(wej, {'x': [], 'y': [], 'z': []})
+            d['x'].append(round(-math.radians(xr), 5))
+            d['y'].append(round(-math.radians(yr), 5))
+            d['z'].append(round(math.radians(zr), 5))
+        p = ch['Hips']['pos']
+        root_x.append(round(-(p[0]-xref)*S, 2))
+        root_y.append(round(stand_px - p[1]*S, 2))  # 骨盆屏幕 y=470-p*S（真实高度）
+        root_z.append(0.0)
+    def _intensity_wrap(tbl):
+        """真实旋转/位移表 × intensity 参数（默认 1.0 保持真实，可调动作幅度）。"""
+        return {"mul": [{"table": tbl}, {"param": "intensity"}]}
+    rotations3d = {}
+    for wej, d in rot_tables.items():
+        comp = {}
+        if len(set(d['x'])) > 1 or d['x'][0] != 0: comp['x_rot'] = _intensity_wrap(d['x'])
+        if len(set(d['y'])) > 1 or d['y'][0] != 0: comp['y_rot'] = _intensity_wrap(d['y'])
+        if len(set(d['z'])) > 1 or d['z'][0] != 0: comp['z_rot'] = _intensity_wrap(d['z'])
+        rotations3d[wej] = comp
+    motion = {
+        "schema": "creatureforge_motion3d_v1",
+        "motion_id": action_id,
+        "title": title or (f"{action_id[:-2].capitalize()} 3D — CMU 真实动捕"
+                           if action_id.endswith('3d') else f"{action_id} — CMU 真实动捕"),
+        "description": description or f"来自 CMU MoCap {Path(bvh).name}：全关节每帧真实旋转 + 真实根位移。",
+        "species": "human",
+        "frame_count": N,
+        "signals": {},
+        "params": {"intensity": {"default": 1.0, "min": 0.5, "max": 1.5,
+                                  "step": 0.05, "label": "动作幅度"}},
+        "fk3d": {"root": "pelvis", "rotations3d": rotations3d},
+        "root3d": {"x": _intensity_wrap(root_x), "y": _intensity_wrap(root_y), "z": _intensity_wrap(root_z)},
+    }
+    p = WE/f'data/species/human/actions3d/{action_id}.json'
+    p.write_text(json.dumps(motion, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+    print(f"已写 {p.name}")
+    # 验证：我们 FK vs CMU 真实坐标
+    from creatureforge.skeleton3d import build_skeleton_3d, pose_3d
+    sk = build_skeleton_3d('human')
+    m = json.loads(p.read_text(encoding='utf-8'))
+    max_err = 0.0; worst_at = ''
+    for k in range(N):
+        pose = pose_3d(sk, m, k)
+        cmu = fk_world(root, data[idxs[k]])
+        hx = CENTER_X - (cmu['Hips'][0]-xref)*S
+        hy = FLOOR_Y - cmu['Hips'][1]*S          # 骨盆屏幕 y = 地面 - 世界 y
+        hz = (cmu['Hips'][2]-zref)*S
+        def cmu_we(j):
+            x, y, z = cmu[j]
+            dx, dy, dz = x-cmu['Hips'][0], y-cmu['Hips'][1], z-cmu['Hips'][2]
+            return [hx - dx*S, hy - dy*S, hz + dz*S]
+        for wej, cmuj in [('hip_left','LeftUpLeg'),('knee_left','LeftLeg'),('ankle_left','LeftFoot'),
+                          ('toe_left','LeftToeBase'),('shoulder_left','LeftArm'),('elbow_left','LeftForeArm'),
+                          ('wrist_left','LeftHand'),('head','Head'),('chest','Spine1')]:
+            e = math.dist(pose[wej], cmu_we(cmuj))
+            if e > max_err: max_err, worst_at = e, wej
+    print(f"验证: 最大误差 {max_err:.1f}px @{worst_at} (FK vs CMU 真实)")
+    print("脚趾 y (目标≈470 着地):")
+    for k in range(N):
+        pose = pose_3d(sk, m, k)
+        print(f"  f{k}: L {pose['toe_left'][1]:6.1f}  R {pose['toe_right'][1]:6.1f}")
+    return motion
+
 def write_walk():
     root, nf, ft, data = load_cmu()
     base = build_cmu_base(root)
@@ -333,8 +502,8 @@ def write_walk():
         print(f"  f{k}: 左脚趾 {pose['toe_left'][1]:6.1f} 右脚趾 {pose['toe_right'][1]:6.1f}")
 
 if __name__ == '__main__':
-    root, nf, ft, data = load_cmu()
     if '--inspect' in sys.argv:
+        root, nf, ft, data = load_cmu()
         print(f"== CMU {BVH.name}: {nf} 帧, {ft}s/帧, {count(root)} 关节 ==")
         print("\n== 骨长（相对父 OFFSET）==")
         for name,(L,off) in bone_lengths(root).items():
@@ -354,5 +523,15 @@ if __name__ == '__main__':
         write_skeleton()
     elif '--walk' in sys.argv:
         write_walk()
+    elif '--convert' in sys.argv:
+        # --convert <action_id> <bvh> <strategy> <N> [min_gap] [joint] [min_cycle]
+        i = sys.argv.index('--convert')
+        aid = sys.argv[i+1]; bvh = sys.argv[i+2]
+        strat = sys.argv[i+3] if len(sys.argv) > i+3 else 'cycle'
+        N = int(sys.argv[i+4]) if len(sys.argv) > i+4 else 16
+        min_gap = int(sys.argv[i+5]) if len(sys.argv) > i+5 else 40
+        joint = sys.argv[i+6] if len(sys.argv) > i+6 else 'LeftToeBase'
+        min_cycle = int(sys.argv[i+7]) if len(sys.argv) > i+7 else 40
+        write_action(aid, bvh, strategy=strat, N=N, min_gap=min_gap, joint=joint, min_cycle=min_cycle)
     else:
-        print("用法: rebuild_skeleton_cmu.py --inspect | --skeleton | --walk")
+        print("用法: rebuild_skeleton_cmu.py --inspect | --skeleton | --walk | --convert <id> <bvh> <cycle|jump|idle> <N> [min_gap] [joint] [min_cycle]")

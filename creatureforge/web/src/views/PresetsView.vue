@@ -154,6 +154,7 @@ const tab = ref('body')
 // 预览（统一 WebGL 组件：骨架 joints 或动作 frames，均由父组件请求数据传入）
 const cam = ref({ yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 })
 const previewAction = ref('')
+const lastPreviewAction = ref('')  // 上一次动作 id（动作切换时拼接过渡段）
 const previewData = ref(null)   // WebGL 数据 {joints|frames, bones, fps, ...}
 const previewViewer = ref(null) // Skeleton3DViewer 实例（setView 控制相机）
 const rendering = ref(false)
@@ -195,6 +196,7 @@ async function openPreset(p) {
     current.value = await api.presetDetail(p.preset_id)
     tab.value = 'body'
     previewAction.value = ''
+    lastPreviewAction.value = ''
     previewData.value = null
   } catch (e) { ElMessage.error(e.message) }
 }
@@ -209,10 +211,11 @@ async function initNew() {
     creating.value = false
     tab.value = 'body'
     previewAction.value = ''
+    lastPreviewAction.value = ''
   } catch (e) { ElMessage.error(e.message) }
 }
 
-function close() { current.value = null; isNew.value = false; previewData.value = null }
+function close() { current.value = null; isNew.value = false; previewData.value = null; lastPreviewAction.value = '' }
 
 async function save() {
   if (!current.value?.preset_id) { ElMessage.warning('预设 ID 不能为空'); return }
@@ -273,12 +276,15 @@ async function renderLive() {
   try {
     const body = encodeURIComponent(JSON.stringify(c.body || {}))
     if (previewAction.value) {
-      // 动作预览：每帧 3D 关节数据（应用体型 + 动作参数）
+      // 动作预览：每帧 3D 关节数据（应用体型 + 动作参数）；动作切换时拼接过渡段
       const params = encodeURIComponent(JSON.stringify((c.actions || {})[previewAction.value] || {}))
+      const switching = lastPreviewAction.value && lastPreviewAction.value !== previewAction.value
+      const trans = switching ? `&transition_from=${encodeURIComponent(lastPreviewAction.value)}` : ''
       const r = await api.motion3dData(previewAction.value,
-        `species=${encodeURIComponent(c.species)}&body=${body}&params=${params}`)
+        `species=${encodeURIComponent(c.species)}&body=${body}&params=${params}${trans}`)
       if (r.ok && r.frames) previewData.value = r
       else previewData.value = null
+      lastPreviewAction.value = previewAction.value
     } else {
       // 骨架预览：应用体型后的骨架 3D 数据
       const r = await api.skeleton3dData(c.species, `data=1&body=${body}`)

@@ -34,10 +34,10 @@ test.describe('预设管理（全量 E2E）', () => {
     await page.mouse.click(hb.x + hb.width * 0.8, hb.y + hb.height / 2)
     await expect(page.locator('.param-item', { hasText: '头大小' }).locator('.val')).toHaveText(/.+/)
 
-    // 动作幅度 tab：walk3d.intensity 派生
+    // 动作幅度 tab：列出物种动作（walk3d 为真实动捕，params 在 json 中；无程序化滑块时显示「无参数」）
     await page.locator('.el-tabs__item', { hasText: '动作幅度' }).click()
     await expect(page.locator('.action-card', { hasText: 'walk3d' })).toBeVisible()
-    await expect(page.locator('.action-card', { hasText: '动作幅度' })).toBeVisible()
+    await expect(page.locator('.action-card', { hasText: 'Walk 3D' })).toBeVisible()
 
     // 预览 tab：实时渲染骨架（应用体型，WebGL 统一组件）
     await page.locator('.el-tabs__item', { hasText: '预览' }).click()

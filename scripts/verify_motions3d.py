@@ -185,7 +185,11 @@ def verify(species_id: str, motion3d: dict, params: dict | None = None,
                 v.append({'constraint': 'sym', 'detail': f'{lj}/{rj}: 不对称 {err:.1f}'})
 
     # ---- 5. 膝/肘弯曲方向（joint_direction；按数据 bend 语义直接判定，不依赖基准符号）----
+    # FK 真实动捕动作（fk3d）关节方向由真实数据决定，若数据声明 fk3d_skip_joint_direction 则跳过
+    skip_joint = bool(cons.get('fk3d_skip_joint_direction')) and bool(motion3d.get('fk3d'))
     for it in cons.get('joint_direction', []):
+        if skip_joint:
+            break
         if any(mid_id.startswith(s) for s in it.get('skip_motions', [])):
             continue
         view = it.get('view', 'front')

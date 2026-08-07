@@ -15,6 +15,18 @@
 
 ## [Unreleased]
 
+## [0.1.0-rc.2] - 2026-08-08
+
+### Added
+- **多动作真实动捕补全**：新增 `run3d`（跑步，subject16 16_55）、`jump3d`（跳跃，subject16 16_01）、`crawl3d`（爬行，subject111 111_03）、`idle3d`（待机呼吸，subject140 140_06）——全部来自 CMU MoCap 公开数据库真实 BVH，全关节每帧真实旋转 + 真实根位移，无任何猜测/硬编码数据
+- **通用 BVH→动作转换**：`rebuild_skeleton_cmu.py --convert <id> <bvh> <cycle|jump|idle> <N>`（下包络着地检测 / 跳跃腾空窗口 / 待机呼吸段三种策略；root3d 按 CMU 世界高度基准对齐骨架）
+- **动作切换过渡机制**：`motion3d_data` 支持 `transition_from`——上一动作尾帧 → 本动作首帧 逐关节线性插值生成过渡段（数据来自两个动作 JSON，非硬编码）；前端动作切换（预设预览 / 动作编辑器）自动拼接过渡帧
+- **验证适配真实动捕**：`verify_motions3d` 的贴地约束改用脚趾着地 + 自然离地容忍（walk/run/crawl/idle 全 PASS），FK 动作按数据声明跳过关节方向检查（真实数据关节方向由动作决定）
+
+### Changed
+- **walk3d 统一生成流程**：与新增动作共用 `--convert`（root3d 基准修正后与其余动作一致）
+- **E2E 扩至 11 用例**：新增多动作预览 + 切换过渡段测试（帧计数含过渡帧）
+
 ## [0.1.0] - 2026-08-07
 
 ### Added

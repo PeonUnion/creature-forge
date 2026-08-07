@@ -269,6 +269,8 @@ const actionJson = ref('')
 const motionData = ref(null)
 const motionViewer = ref(null)  // Skeleton3DViewer 实例（setView 控制相机）
 const gifLoading = ref(false)
+// 上一次预览动作 id（动作切换时请求拼接过渡段：上一动作尾帧 → 本动作首帧）
+let lastMotionId = ''
 function resetMotionData() { motionData.value = null }
 const motionRenderLoading = ref(false)
 const cam = ref({ yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 })
@@ -329,7 +331,7 @@ async function openAction(sp, actionId) {
     actionEditor.value = act
     actionJson.value = JSON.stringify(act, null, 2)
     resetMotionData()
-    // 进入动作预览：默认「正面」视角并自动渲染
+    // 进入动作预览：默认「正面」视角并自动渲染（切换动作时带过渡段）
     cam.value = { ...cam.value, yaw: 0, pitch: 0 }
     await renderAction()
   } catch(e) { ElMessage.error(e.message) }
@@ -393,9 +395,13 @@ async function renderAction() {
   motionRenderLoading.value = true
   try {
     // WebGL：获取动作每帧 3D 关节数据，前端 Three.js GPU 逐帧播放（拖拽/播放即时，无逐帧后端请求）
-    const r = await api.motion3dData(actionEditor.value.motion_id, `species=${selectedSpecies.value.id}`)
+    // 动作切换时（lastMotionId 不同）请求过渡段：上一动作尾帧 → 本动作首帧 插值
+    const switching = lastMotionId && lastMotionId !== actionEditor.value.motion_id
+    const trans = switching ? `&transition_from=${encodeURIComponent(lastMotionId)}` : ''
+    const r = await api.motion3dData(actionEditor.value.motion_id, `species=${selectedSpecies.value.id}${trans}`)
     if (r.ok && r.frames) motionData.value = r
     else { motionData.value = null; ElMessage.error('动作数据获取失败') }
+    lastMotionId = actionEditor.value.motion_id
   } catch(e) { ElMessage.error(e.message) }
   motionRenderLoading.value = false
 }

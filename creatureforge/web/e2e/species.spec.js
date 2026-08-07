@@ -59,8 +59,9 @@ test.describe('物种管理（全量 E2E）', () => {
     await page.locator('.list-item .item-main', { hasText: '人类骨骼拓扑' }).click()
     await page.locator('.el-tabs__item', { hasText: '动作管理' }).click()
     await expect(page.locator('.cell-title', { hasText: 'Walk 3D' })).toBeVisible()
-    // 动作表格内的「编辑」按钮（非 sidebar 的物种编辑）
-    await page.locator('.el-table button', { hasText: '编辑' }).first().click()
+    // 动作表格内的「编辑」按钮（按行内 walk3d 精确定位，非 .first()）
+    await page.locator('.el-table .el-table__row', { hasText: 'walk3d' })
+      .getByRole('button', { name: '编辑' }).click()
     // 动作编辑器（面包屑 walk3d）
     await expect(page.locator('.crumb-now', { hasText: 'walk3d' })).toBeVisible({ timeout: 20_000 })
     // 动作 JSON 定义区（el-input textarea，class 在 wrapper）
@@ -85,7 +86,8 @@ test.describe('物种管理（全量 E2E）', () => {
     await page.locator('.list-item .item-main', { hasText: '人类骨骼拓扑' }).click()
     await page.locator('.el-tabs__item', { hasText: '动作管理' }).click()
     await expect(page.locator('.cell-title', { hasText: 'Walk 3D' })).toBeVisible()
-    await page.locator('.el-table button', { hasText: '编辑' }).first().click()
+    await page.locator('.el-table .el-table__row', { hasText: 'walk3d' })
+      .getByRole('button', { name: '编辑' }).click()
     await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 40_000 })
     // 初始：正面应高亮（openAction 默认 yaw=0）
     await expect(page.locator('button', { hasText: '正面' })).toHaveClass(/primary/)
@@ -162,5 +164,30 @@ test.describe('物种管理（全量 E2E）', () => {
     await row.locator('button', { hasText: '删除' }).click()
     await page.locator('.el-message-box__btns button', { hasText: '确定' }).click()
     await expect(page.locator('.cell-title', { hasText: 'E2E 动作' })).toHaveCount(0)
+  })
+
+  test('多动作预览：run/jump/crawl/idle 真实动捕逐帧渲染 + 动作切换过渡段', async ({ page }) => {
+    await page.locator('.list-item .item-main', { hasText: '人类骨骼拓扑' }).click()
+    await page.locator('.el-tabs__item', { hasText: '动作管理' }).click()
+    // 依次打开各真实动捕动作：首个无过渡（16帧），后续切换带过渡段（+6 帧）
+    const steps = [
+      ['run3d', '16'],       // 首个：无过渡
+      ['jump3d', '30'],      // 切自 run3d：24 + 6 过渡
+      ['crawl3d', '22'],     // 切自 jump3d：16 + 6 过渡
+      ['idle3d', '54'],      // 切自 crawl3d：48 + 6 过渡
+    ]
+    for (let i = 0; i < steps.length; i++) {
+      const [id, fc] = steps[i]
+      await page.locator('.el-table .el-table__row', { hasText: id })
+        .getByRole('button', { name: '编辑' }).click()
+      await expect(page.locator('.crumb-now', { hasText: id })).toBeVisible({ timeout: 20_000 })
+      await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 40_000 })
+      // 帧计数徽章：动作帧数（含切换过渡段）
+      await expect(page.locator('.sk3d-badge')).toContainText(fc, { timeout: 15_000 })
+      if (i < steps.length - 1) {
+        await page.locator('button', { hasText: '关闭' }).click()
+        await expect(page.locator('.el-tabs__item', { hasText: '动作管理' })).toBeVisible()
+      }
+    }
   })
 })
