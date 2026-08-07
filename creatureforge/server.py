@@ -128,14 +128,15 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         dist = float(qs.get("dist", ["1"])[0])
         pan_x = float(qs.get("pan_x", ["0"])[0])
         pan_y = float(qs.get("pan_y", ["0"])[0])
+        grid = qs.get("grid", ["1"])[0] not in ("0", "false")
         # 其余查询参数作为体型参数（param_chains 驱动，3D 空间应用）
-        cam_keys = {"yaw", "pitch", "dist", "pan_x", "pan_y"}
+        cam_keys = {"yaw", "pitch", "dist", "pan_x", "pan_y", "grid"}
         body = {k: float(v[0]) for k, v in qs.items() if k not in cam_keys}
         species_id = parts[0]
         try:
             data_url = self.api.render_skeleton3d(
                 species_id, yaw=yaw, pitch=pitch, dist=dist,
-                pan_x=pan_x, pan_y=pan_y,
+                pan_x=pan_x, pan_y=pan_y, grid=grid,
                 body=body or None)
             return self._json({"ok": True, "data_url": data_url})
         except Exception as e:
@@ -155,13 +156,14 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         dist = float(qs.get("dist", ["1"])[0])
         pan_x = float(qs.get("pan_x", ["0"])[0])
         pan_y = float(qs.get("pan_y", ["0"])[0])
+        grid = qs.get("grid", ["1"])[0] not in ("0", "false")
         frame = int(qs.get("frame", ["0"])[0])
         gif = qs.get("gif", ["0"])[0] in ("1", "true")
         species_q = qs.get("species", [None])[0]
         try:
             result = self.api.render_motion3d(
                 parts[0], species=species_q, yaw=yaw, pitch=pitch, dist=dist,
-                pan_x=pan_x, pan_y=pan_y,
+                pan_x=pan_x, pan_y=pan_y, grid=grid,
                 frame=frame, gif=gif,
                 frames=qs.get("frames", ["0"])[0] in ("1", "true"))
             return self._json(result)
@@ -380,6 +382,7 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         dist = float(qs.get("dist", ["1"])[0])
         pan_x = float(qs.get("pan_x", ["0"])[0])
         pan_y = float(qs.get("pan_y", ["0"])[0])
+        grid = qs.get("grid", ["1"])[0] not in ("0", "false")
         frame = int(qs.get("frame", ["0"])[0])
         gif = qs.get("gif", ["0"])[0] in ("1", "true")
         frames = qs.get("frames", ["0"])[0] in ("1", "true")
@@ -401,7 +404,7 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             result = self.api.render_preset3d(
                 parts[0], species=species_id, body=body, actions=actions,
                 action_id=action_id, yaw=yaw, pitch=pitch, dist=dist,
-                pan_x=pan_x, pan_y=pan_y,
+                pan_x=pan_x, pan_y=pan_y, grid=grid,
                 frame=frame, gif=gif, frames=frames)
             return self._json(result)
         except KeyError as e:

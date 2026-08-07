@@ -79,7 +79,7 @@ async function exportGif() {
   try {
     const c = props.cam || {}
     const qs = `species=${encodeURIComponent(props.speciesId)}&yaw=${c.yaw ?? 0}&pitch=${c.pitch ?? 0}` +
-               `&dist=${c.dist ?? 1}&pan_x=${c.panX ?? 0}&pan_y=${c.panY ?? 0}&gif=1`
+               `&dist=${c.dist ?? 1}&pan_x=${c.panX ?? 0}&pan_y=${c.panY ?? 0}&grid=0&gif=1`
     const r = await api.renderMotion3d(props.motionId, qs)
     if (r.gif) {
       const a = document.createElement('a')

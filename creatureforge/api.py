@@ -109,28 +109,30 @@ class ApiService:
 
     def render_skeleton3d(self, species_id: str, *, yaw: float = 0, pitch: float = 0,
                           dist: float = 1.0, pan_x: float = 0, pan_y: float = 0,
-                          body: dict | None = None) -> str:
+                          grid: bool = True, body: dict | None = None) -> str:
         """3D 骨架渲染（应用体型参数 body），返回 PNG data_url。
 
-        dist 为距离倍数（相对自动适配基准：1=模型占垂直视野 76%，>1 拉远、<1 拉近）。
+        dist 为距离倍数（相对自动适配基准：1=模型占垂直视野 76%，>1 拉远、<1 拉近）；
+        grid 是否绘制地面辅助网格（默认开）。
         """
         from .skeleton3d import build_skeleton_3d, render_pose, _fit_distance
         skel3d = build_skeleton_3d(species_id, body=body, species_root=self.species._root)
         center = tuple(skel3d.get("center", (480.0, 300.0, 0.0)))
         hr = float(skel3d.get("head_radius", 22.0))
         base = {j: list(v) for j, v in skel3d["joints"].items()}
+        ground_y = max(v[1] for v in skel3d["joints"].values())
         dist_abs = _fit_distance(base, center) * max(dist, 0.01)
         img = render_pose(base, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                          head_radius=hr)
+                          grid=grid, grid_y=ground_y, head_radius=hr)
         return image_to_data_url(img)
 
     def render_motion3d(self, action_id: str, *, species: str | None = None, yaw: float = 0,
                         pitch: float = 0, dist: float = 1.0, pan_x: float = 0,
-                        pan_y: float = 0, frame: int = 0, gif: bool = False,
-                        frames: bool = False) -> dict:
+                        pan_y: float = 0, grid: bool = True, frame: int = 0,
+                        gif: bool = False, frames: bool = False) -> dict:
         """3D 动作渲染。返回 {'data_url'} 或 {'frames':[...],'frame_count'} 或 {'gif':...}。
 
-        dist 为距离倍数（相对自动适配基准，1=模型占垂直视野 76%）。
+        dist 为距离倍数（相对自动适配基准，1=模型占垂直视野 76%）；grid 是否绘制网格。
         """
         from .skeleton3d import build_skeleton_3d, pose_3d, render_pose, _fit_distance
         from PIL import Image
@@ -145,6 +147,7 @@ class ApiService:
         skel3d = build_skeleton_3d(species_id, species_root=self.species._root)
         center = tuple(skel3d.get("center", (480.0, 300.0, 0.0)))
         hr = float(skel3d.get("head_radius", 22.0))
+        ground_y = max(v[1] for v in skel3d["joints"].values())
         n = int(motion.get("frame_count", 8))
         base_pose = pose_3d(skel3d, motion, 0)
         dist_abs = _fit_distance(base_pose, center) * max(dist, 0.01)
@@ -154,14 +157,15 @@ class ApiService:
                 p = pose_3d(skel3d, motion, i)
                 urls.append(image_to_data_url(
                     render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                                head_radius=hr)))
+                                grid=grid, grid_y=ground_y, head_radius=hr)))
             return {"ok": True, "frames": urls, "frame_count": n, "species": species_id}
         if gif:
             imgs = []
             for i in range(n):
                 p = pose_3d(skel3d, motion, i)
                 imgs.append(render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                                        head_radius=hr).resize((640, 400), Image.Resampling.NEAREST))
+                                        grid=grid, grid_y=ground_y, head_radius=hr)
+                             .resize((640, 400), Image.Resampling.NEAREST))
             buf = io.BytesIO()
             imgs[0].save(buf, format="GIF", save_all=True, append_images=imgs[1:],
                          duration=180, loop=0, disposal=2)
@@ -169,18 +173,19 @@ class ApiService:
                     "species": species_id}
         p = pose_3d(skel3d, motion, frame)
         img = render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                          head_radius=hr)
+                          grid=grid, grid_y=ground_y, head_radius=hr)
         return {"ok": True, "data_url": image_to_data_url(img), "species": species_id}
 
     def render_preset3d(self, preset_ref: str, *, species: str | None = None,
                         body: dict | None = None, actions: dict | None = None,
                         action_id: str | None = None, yaw: float = 0, pitch: float = 0,
                         dist: float = 1.0, pan_x: float = 0, pan_y: float = 0,
-                        frame: int = 0, gif: bool = False, frames: bool = False) -> dict:
+                        grid: bool = True, frame: int = 0, gif: bool = False,
+                        frames: bool = False) -> dict:
         """3D 预设渲染（应用体型 body + 动作参数 actions）。
 
         preset_ref='live' 用传参（未保存实时预览），否则读 presets/<id>.json。
-        有 action_id → 动作帧/GIF；无 → 骨架。dist 为距离倍数。
+        有 action_id → 动作帧/GIF；无 → 骨架。dist 为距离倍数；grid 是否绘制网格。
         """
         from .skeleton3d import build_skeleton_3d, pose_3d, render_pose, _fit_distance
         from PIL import Image
@@ -198,6 +203,7 @@ class ApiService:
         skel3d = build_skeleton_3d(species_id, body=b, species_root=self.species._root)
         center = tuple(skel3d.get("center", (480.0, 300.0, 0.0)))
         hr = float(skel3d.get("head_radius", 22.0))
+        ground_y = max(v[1] for v in skel3d["joints"].values())
         if action_id:
             motion = self.species.get_action(species_id, action_id)
             n = int(motion.get("frame_count", 8))
@@ -210,27 +216,28 @@ class ApiService:
                     p = pose_3d(skel3d, motion, i, params=params)
                     urls.append(image_to_data_url(
                         render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                                    head_radius=hr)))
+                                    grid=grid, grid_y=ground_y, head_radius=hr)))
                 return {"ok": True, "frames": urls, "frame_count": n}
             if gif:
                 imgs = []
                 for i in range(n):
                     p = pose_3d(skel3d, motion, i, params=params)
                     imgs.append(render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                                            head_radius=hr).resize((640, 400), Image.Resampling.NEAREST))
+                                            grid=grid, grid_y=ground_y, head_radius=hr)
+                                 .resize((640, 400), Image.Resampling.NEAREST))
                 buf = io.BytesIO()
                 imgs[0].save(buf, format="GIF", save_all=True, append_images=imgs[1:],
                              duration=180, loop=0, disposal=2)
                 return {"ok": True, "gif": "data:image/gif;base64," + base64.b64encode(buf.getvalue()).decode()}
             p = pose_3d(skel3d, motion, frame, params=params)
             img = render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                              head_radius=hr)
+                              grid=grid, grid_y=ground_y, head_radius=hr)
             return {"ok": True, "data_url": image_to_data_url(img)}
         # 骨架渲染（应用体型）
         base = {j: list(v) for j, v in skel3d["joints"].items()}
         dist_abs = _fit_distance(base, center) * max(dist, 0.01)
         img = render_pose(base, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                          head_radius=hr)
+                          grid=grid, grid_y=ground_y, head_radius=hr)
         return {"ok": True, "data_url": image_to_data_url(img)}
 
 

@@ -594,16 +594,52 @@ def render_motion_3d(skel3d: dict, motion3d: dict, yaw_deg: float = 0.0,
                        head_radius=float(skel3d.get("head_radius", 22.0)))
 
 
+def _draw_ground_grid(draw, pose: dict[str, list[float]], yaw_deg, pitch_deg, distance,
+                      center, pan_x, pan_y, ground_y: float | None = None) -> None:
+    """在脚部基准面（世界 XZ 平面）绘制辅助网格，随相机透视投影（业界查看器标准）。
+
+    ground_y 为空时取关节 Y 最大值（脚部）。网格覆盖模型包围半径的 1.4 倍，6 等分。
+    """
+    from creatureforge.render import GUIDE
+    cx, cy, cz = center or _CENTER
+    rad = max((math.hypot(x - cx, y - cy, z - cz) for x, y, z in pose.values()), default=100.0)
+    rad = rad or 100.0
+    gy = ground_y if ground_y is not None else max(v[1] for v in pose.values())
+    extent = rad * 1.4
+    step = max(extent / 6.0, 1.0)
+    n = int(round(extent / step))
+    pts: dict[str, tuple[float, float, float]] = {}
+    line_keys: list[tuple[str, str]] = []
+    for i in range(-n, n + 1):
+        v = i * step
+        a, b = f"gx{i}a", f"gx{i}b"
+        pts[a], pts[b] = (v, gy, -extent), (v, gy, extent)
+        line_keys.append((a, b))
+        c, d = f"gz{i}a", f"gz{i}b"
+        pts[c], pts[d] = (-extent, gy, v), (extent, gy, v)
+        line_keys.append((c, d))
+    gs = project3d(pts, yaw_deg, pitch_deg, distance, center=center, pan_x=pan_x, pan_y=pan_y)
+    for a, b in line_keys:
+        pa, pb = gs.get(a), gs.get(b)
+        if pa is not None and pb is not None:
+            draw.line([pa, pb], fill=GUIDE, width=1)
+
+
 def render_pose(pose: dict[str, list[float]], bones: list[list[str]],
                 yaw_deg: float = 0.0, pitch_deg: float = 0.0,
                 distance: float = 600.0,
                 center: tuple[float, float, float] | None = None,
                 pan_x: float = 0.0, pan_y: float = 0.0,
+                grid: bool = True, grid_y: float | None = None,
                 head_radius: float = 22.0) -> Image.Image:
-    """渲染任意 3D 姿势：业界标准轨道相机（固定 FOV），distance<=0 自动适配。"""
+    """渲染任意 3D 姿势：业界标准轨道相机（固定 FOV）+ 地面网格，distance<=0 自动适配。"""
     from creatureforge.render import BONE, JOINT, canvas, head, joint, bone
 
+    if distance is None or distance <= 0:
+        distance = _fit_distance(pose, center or _CENTER)
     image, draw = canvas()
+    if grid:
+        _draw_ground_grid(draw, pose, yaw_deg, pitch_deg, distance, center, pan_x, pan_y, grid_y)
     screen_pts = project3d(pose, yaw_deg, pitch_deg, distance, center=center,
                            pan_x=pan_x, pan_y=pan_y)
     # 头部椭圆：多首物种（三头飞龙）画出所有头（head / head_left / head_right），需在骨骼之上
@@ -621,12 +657,18 @@ def render_pose(pose: dict[str, list[float]], bones: list[list[str]],
 def render_view(skel3d: dict, yaw_deg: float = 0.0, pitch_deg: float = 0.0,
                 distance: float = 600.0,
                 pan_x: float = 0.0, pan_y: float = 0.0,
+                grid: bool = True,
                 width: int = 640, height: int = 480) -> Image.Image:
-    """渲染 3D 骨架：业界标准轨道相机（固定 FOV），distance<=0 自动适配。"""
+    """渲染 3D 骨架：业界标准轨道相机（固定 FOV）+ 地面网格，distance<=0 自动适配。"""
     from creatureforge.render import BONE, JOINT, canvas, head, joint, bone
 
-    image, draw = canvas()
     center = tuple(skel3d.get("center", _CENTER))
+    if distance is None or distance <= 0:
+        distance = _fit_distance(skel3d["joints"], center)
+    image, draw = canvas()
+    if grid:
+        _draw_ground_grid(draw, skel3d["joints"], yaw_deg, pitch_deg, distance, center,
+                          pan_x, pan_y, ground_y=max(v[1] for v in skel3d["joints"].values()))
     screen_pts = project3d(skel3d["joints"], yaw_deg, pitch_deg, distance, center=center,
                            pan_x=pan_x, pan_y=pan_y)
     # 头部椭圆：多首物种（三头飞龙）画出所有头
