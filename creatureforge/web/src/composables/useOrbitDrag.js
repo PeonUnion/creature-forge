@@ -1,8 +1,12 @@
 import { ref, onBeforeUnmount } from 'vue'
+import { dragMode } from './dragMode.js'
 
 /**
- * 轨道相机拖拽交互（业界 OrbitControls 语义）：
+ * 3D 预览拖拽交互：
  * - 左键拖拽 = 旋转（水平→yaw、垂直→pitch）
+ *   - trackball（默认）：物体表面跟随鼠标 = 转动手办本体（右拖→手办右转=yaw 增）
+ *   - orbit：轨道相机（右拖→手办左转=yaw 减，像拖动相机；Three.js/Blender 可切换）
+ * - 上拖（dy<0）→ 俯视看到顶部（pitch 增），两种手感一致
  * - **Shift + 左键拖拽 = 平移观察目标**（水平→panX、垂直→panY，不改变观测角度）
  *
  * 视角变化通过 setCam 回调交给父级（通常配合 watch cam → debounce 重渲染）。
@@ -29,8 +33,10 @@ export function useOrbitDrag({ getCam, setCam, onDragStart, onDragEnd }) {
       // 平移：拖拽方向 = 画面移动方向（场景跟随鼠标），保持 yaw/pitch 不变
       setCam({ ...cam, panX: spanX + dx, panY: spanY + dy })
     } else {
-      const yaw = (((syaw + dx * 0.5) % 360) + 360) % 360
-      const pitch = clamp(spitch + dy * 0.5, -90, 90)
+      // trackball：物体表面跟随鼠标（右拖→手办右转=yaw 增）；orbit：拖相机（右拖→yaw 减）
+      const dir = dragMode.value === 'trackball' ? 1 : -1
+      const yaw = (((syaw + dx * 0.5 * dir) % 360) + 360) % 360
+      const pitch = clamp(spitch - dy * 0.5, -90, 90)  // 上拖→俯视看到顶部，两种一致
       setCam({ ...cam, yaw, pitch })
     }
   }

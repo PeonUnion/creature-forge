@@ -27,7 +27,15 @@
             <span class="cam-val">{{ fmt(item, cam[item.key]) }}</span>
           </div>
         </div>
-        <div class="cam-tip">💡 左键拖拽 = 旋转视角 · Shift+左键拖拽 = 平移观察点（角度不变）</div>
+        <!-- 拖拽手感：轨迹球（物体跟随鼠标）/ 轨道（拖动相机） -->
+        <div class="cam-row">
+          <span class="cam-label">拖拽手感</span>
+          <el-radio-group v-model="dragModeModel" size="small">
+            <el-radio-button value="trackball">轨迹球</el-radio-button>
+            <el-radio-button value="orbit">轨道</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="cam-tip">💡 左键拖拽 = 旋转 · Shift+左键拖拽 = 平移观察点（角度不变）</div>
       </div>
     </el-popover>
   </div>
@@ -35,9 +43,11 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { dragMode, setDragMode } from '../composables/dragMode.js'
 
 /**
  * 3D 相机控制（轨道相机：yaw/pitch/dist 决定相机位置，固定 FOV，任意角度+距离查看）。
+ * 拖拽手感（轨迹球/轨道）全局共享，可在面板切换。
  * - 常驻：快捷视角按钮（正面/侧面/背面/45°/俯视/微仰）
  * - 面板：相机（yaw/pitch/dist/pan）+ 重置
  * - 配合预览图拖拽旋转（见 useOrbitDrag）
@@ -52,6 +62,11 @@ const emit = defineEmits(['update:modelValue'])
 const panelOpen = ref(false)
 const cam = computed(() => props.modelValue)
 const set = (key, val) => emit('update:modelValue', { ...props.modelValue, [key]: val })
+// 拖拽手感（轨迹球/轨道）全局共享，面板切换 + localStorage 持久化
+const dragModeModel = computed({
+  get: () => dragMode.value,
+  set: (v) => setDragMode(v),
+})
 
 const DEFAULT_CAM = { yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 }
 function reset() { emit('update:modelValue', { ...DEFAULT_CAM }) }
