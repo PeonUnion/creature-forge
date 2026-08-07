@@ -1,13 +1,14 @@
 import { ref, onBeforeUnmount } from 'vue'
 
 /**
- * 轨道相机拖拽旋转（3D 视角直观调整）。
+ * 轨道相机拖拽交互（业界 OrbitControls 语义）：
+ * - 左键拖拽 = 旋转（水平→yaw、垂直→pitch）
+ * - **Shift + 左键拖拽 = 平移观察目标**（水平→panX、垂直→panY，不改变观测角度）
  *
- * 用法：预览图（或任意元素）上按住左键拖动 → 水平拖动旋转 yaw、垂直拖动调整 pitch。
  * 视角变化通过 setCam 回调交给父级（通常配合 watch cam → debounce 重渲染）。
  *
  * @param {Object} opts
- * @param {() => Object} opts.getCam   读取当前相机 {yaw, pitch, ...}
+ * @param {() => Object} opts.getCam   读取当前相机 {yaw, pitch, panX, panY, ...}
  * @param {(cam: Object) => void} opts.setCam  更新相机
  * @param {(e: MouseEvent) => void} [opts.onDragStart]
  * @param {(e: MouseEvent) => void} [opts.onDragEnd]
@@ -15,7 +16,7 @@ import { ref, onBeforeUnmount } from 'vue'
  */
 export function useOrbitDrag({ getCam, setCam, onDragStart, onDragEnd }) {
   const dragging = ref(false)
-  let sx = 0, sy = 0, syaw = 0, spitch = 0
+  let sx = 0, sy = 0, syaw = 0, spitch = 0, spanX = 0, spanY = 0, mode = 'rotate'
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
 
@@ -23,9 +24,15 @@ export function useOrbitDrag({ getCam, setCam, onDragStart, onDragEnd }) {
     if (!dragging.value) return
     const dx = e.clientX - sx
     const dy = e.clientY - sy
-    const yaw = (((syaw + dx * 0.5) % 360) + 360) % 360
-    const pitch = clamp(spitch + dy * 0.5, -90, 90)
-    setCam({ ...getCam(), yaw, pitch })
+    const cam = { ...getCam() }
+    if (mode === 'pan') {
+      // 平移：拖拽方向 = 画面移动方向（场景跟随鼠标），保持 yaw/pitch 不变
+      setCam({ ...cam, panX: spanX + dx, panY: spanY + dy })
+    } else {
+      const yaw = (((syaw + dx * 0.5) % 360) + 360) % 360
+      const pitch = clamp(spitch + dy * 0.5, -90, 90)
+      setCam({ ...cam, yaw, pitch })
+    }
   }
 
   function end(e) {
@@ -41,8 +48,12 @@ export function useOrbitDrag({ getCam, setCam, onDragStart, onDragEnd }) {
     if (e.button !== 0) return
     dragging.value = true
     sx = e.clientX; sy = e.clientY
-    syaw = getCam().yaw ?? 0
-    spitch = getCam().pitch ?? 0
+    const c = getCam() || {}
+    syaw = c.yaw ?? 0
+    spitch = c.pitch ?? 0
+    spanX = c.panX ?? 0
+    spanY = c.panY ?? 0
+    mode = e.shiftKey ? 'pan' : 'rotate'
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', end)
     document.body.style.cursor = 'grabbing'

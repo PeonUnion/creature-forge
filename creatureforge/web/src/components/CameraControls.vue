@@ -27,7 +27,7 @@
             <span class="cam-val">{{ fmt(item, cam[item.key]) }}</span>
           </div>
         </div>
-        <div class="cam-tip">💡 直接拖拽预览图即可旋转视角</div>
+        <div class="cam-tip">💡 左键拖拽 = 旋转视角 · Shift+左键拖拽 = 平移观察点（角度不变）</div>
       </div>
     </el-popover>
   </div>
@@ -77,8 +77,8 @@ const orbitItems = [
   { key: 'yaw', label: '水平角', unit: '°', min: 0, max: 360, step: 1 },
   { key: 'pitch', label: '俯仰角', unit: '°', min: -90, max: 90, step: 1 },
   { key: 'dist', label: '距离', unit: '×', min: 0.2, max: 5, step: 0.05 },
-  { key: 'panX', label: '平移 X', unit: '', min: -300, max: 300, step: 10 },
-  { key: 'panY', label: '平移 Y', unit: '', min: -200, max: 200, step: 10 },
+  { key: 'panX', label: '平移 X', unit: '', min: -600, max: 600, step: 10 },
+  { key: 'panY', label: '平移 Y', unit: '', min: -400, max: 400, step: 10 },
 ]
 
 const fmt = (item, v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v) + item.unit
