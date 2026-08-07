@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,21 @@ EXE = ".exe" if os.name == "nt" else ""
 
 # 版本号：优先环境变量 ASSETSLAB_VERSION（CI 从 tag 提取），否则取仓库最近 tag/commit
 VERSION = os.environ.get("ASSETSLAB_VERSION", "").strip()
+# 平台+架构后缀：CI 传 ASSETSLAB_PLATFORM（如 linux-x64 / windows-x64 / macos-arm64）
+PLATFORM = os.environ.get("ASSETSLAB_PLATFORM", "").strip()
+
+
+def _platform_suffix() -> str:
+    """产物平台架构后缀（保证三平台产物名不冲突）：如 -linux-x64。"""
+    if PLATFORM:
+        return "-" + PLATFORM
+    # 本地 fallback：检测当前平台+架构
+    machine = {
+        "x86_64": "x64", "AMD64": "x64", "aarch64": "arm64", "arm64": "arm64",
+        "x86": "x86", "i386": "x86", "armv7l": "arm",
+    }.get(platform.machine(), platform.machine().lower())
+    osname = {"linux": "linux", "windows": "windows", "darwin": "macos"}.get(sys.platform, sys.platform)
+    return f"-{osname}-{machine}"
 
 
 def _version_suffix() -> str:
@@ -84,12 +100,12 @@ def main() -> None:
     _build("creature-forge-server", ROOT / "creatureforge" / "server.py")
     _build("creature-forge-cli", ROOT / "creatureforge" / "cli.py")
 
-    # rename to versioned artifacts (for release)
+    # rename to versioned + platform/arch artifacts (for release)
     print("\n=== Artifacts ===")
     for name in ("creature-forge-server", "creature-forge-cli"):
         src = dist / f"{name}{EXE}"
         if src.is_file():
-            tagged = dist / f"{name}-{ver}{EXE}"
+            tagged = dist / f"{name}-{ver}{_platform_suffix()}{EXE}"
             shutil.move(str(src), str(tagged))
             print(f"  {tagged.name}  {tagged.stat().st_size / 1024 / 1024:.1f} MiB")
 

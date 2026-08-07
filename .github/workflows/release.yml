@@ -80,6 +80,8 @@ jobs:
         env:
           # 版本号：tag 触发用 tag（v*）；手动触发用输入值，默认 dev
           ASSETSLAB_VERSION: ${{ github.ref_name }}
+          # 平台+架构后缀（保证三平台产物名不冲突）：linux-x64 / windows-x64 / macos-arm64
+          ASSETSLAB_PLATFORM: ${{ matrix.label }}
         run: python scripts/build_release.py
 
       - name: Upload artifacts
