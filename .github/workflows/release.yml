@@ -96,6 +96,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 完整历史：预发布（rc/beta/alpha）在 CHANGELOG 无条目时，用 git log 生成 commit 总结
+          fetch-depth: 0
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -103,20 +106,39 @@ jobs:
           path: release/
           merge-multiple: true
 
-      - name: Extract CHANGELOG for this tag
+      - name: Generate release notes (CHANGELOG or commit summary)
         shell: bash
         run: |
           VER="${GITHUB_REF_NAME#v}"
           python - "$VER" <<'PY'
-          import re, sys
+          import re, subprocess, sys
           ver = sys.argv[1]
           text = open('CHANGELOG.md', encoding='utf-8').read()
-          # 提取 "## [<前缀><ver>] - <date>" 到下一个版本块的段落
+          # 1) 优先：CHANGELOG 精确版本块（如 [0.1.0]）
           m = re.search(
               r'^## \[[^\]]*' + re.escape(ver) + r'[^\]]*\]\s*-\s*\S+.*?(?=^## \[|\Z)',
               text, re.S | re.M)
-          body = m.group(0).strip() if m else f'## 版本 {ver}\n\n（未在 CHANGELOG.md 找到对应条目，请补充）'
-          open('release-body.md', 'w', encoding='utf-8').write(body)
+          if m:
+              body = m.group(0).strip()
+          else:
+              # 2) fallback：基于 commit 消息总结（上一 tag → 当前 tag；无上一 tag 则全历史）
+              ref = 'v' + ver
+              prev = ''
+              r = subprocess.run(
+                  ['git', 'describe', '--tags', '--abbrev=0', ref + '~1'],
+                  capture_output=True, text=True)
+              if r.returncode == 0 and r.stdout.strip():
+                  prev = r.stdout.strip()
+              rng = (prev + '..' + ref) if prev else ref
+              logs = subprocess.run(
+                  ['git', 'log', '--no-merges', '--pretty=format:%s', rng],
+                  capture_output=True, text=True).stdout.strip().split('\n')
+              lines = [l.strip() for l in logs if l.strip()]
+              if lines:
+                  body = f'## Commits ({ver})\n\n' + '\n'.join(f'- {l}' for l in lines)
+              else:
+                  body = f'## {ver}\n\n（无 CHANGELOG 条目且无提交记录）'
+          open('release-body.md', 'w', encoding='utf-8').write(body + '\n')
           PY
           echo "Release body 行数: $(wc -l < release-body.md)"
 
