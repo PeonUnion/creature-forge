@@ -610,13 +610,15 @@ def _draw_ground_grid(draw, pose: dict[str, list[float]], yaw_deg, pitch_deg, di
     n = int(round(extent / step))
     pts: dict[str, tuple[float, float, float]] = {}
     line_keys: list[tuple[str, str]] = []
+    # 网格中心对齐模型中心（center 的 XZ），Y 在地面（脚部）。project3d 期望绝对世界坐标，
+    # 因此网格点需叠加 center 偏移；否则网格会画在世界原点（模型左侧，看起来偏移）
     for i in range(-n, n + 1):
         v = i * step
         a, b = f"gx{i}a", f"gx{i}b"
-        pts[a], pts[b] = (v, gy, -extent), (v, gy, extent)
+        pts[a], pts[b] = (cx + v, gy, cz - extent), (cx + v, gy, cz + extent)
         line_keys.append((a, b))
         c, d = f"gz{i}a", f"gz{i}b"
-        pts[c], pts[d] = (-extent, gy, v), (extent, gy, v)
+        pts[c], pts[d] = (cx - extent, gy, cz + v), (cx + extent, gy, cz + v)
         line_keys.append((c, d))
     gs = project3d(pts, yaw_deg, pitch_deg, distance, center=center, pan_x=pan_x, pan_y=pan_y)
     for a, b in line_keys:
