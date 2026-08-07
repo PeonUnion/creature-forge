@@ -35,8 +35,8 @@ node_modules/
 Thumbs.db
 
 # --- Playwright E2E 输出 ---
-assetslab/web/test-results/
-assetslab/web/playwright-report/
+creatureforge/web/test-results/
+creatureforge/web/playwright-report/
 
 # --- 数据目录（默认仓库根 data/：species 为资产提交；presets 为运行时用户数据） ---
 data/presets/
