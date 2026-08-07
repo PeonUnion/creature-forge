@@ -142,13 +142,38 @@ jobs:
           PY
           echo "Release body 行数: $(wc -l < release-body.md)"
 
-      # 反复重推同 tag 会产生重复 release → GitHub API 拒绝 update（already_exists）。
-      # 创建前先删除同 tag 的旧 release（保留 tag 本身），确保每次干净重建。
-      - name: Delete existing release for this tag
+      # 反复重推同 tag 会产生重复 release/draft → GitHub API 拒绝 update（already_exists）。
+      # 创建前先删除同 tag 的全部 release 与 draft（保留 tag 本身），确保每次干净重建。
+      - name: Delete existing releases for this tag (incl. drafts)
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release delete "${GITHUB_REF_NAME}" --yes || true
+          python3 - <<'PY'
+          import json, os, urllib.request
+          token = os.environ['GH_TOKEN']
+          repo = os.environ['GITHUB_REPOSITORY']
+          tag = os.environ['GITHUB_REF_NAME']
+          base = f'https://api.github.com/repos/{repo}'
+          h = {'Authorization': f'Bearer {token}',
+               'Accept': 'application/vnd.github+json',
+               'User-Agent': 'creature-forge'}
+          try:
+              req = urllib.request.Request(base + '/releases?per_page=100', headers=h)
+              rels = json.load(urllib.request.urlopen(req))
+          except Exception as e:
+              print('list releases failed:', e)
+              raise SystemExit(0)
+          for r in rels:
+              if r.get('tag_name') == tag:
+                  rid = r['id']
+                  try:
+                      urllib.request.urlopen(urllib.request.Request(
+                          f'{base}/releases/{rid}', method='DELETE', headers=h))
+                      print(f'deleted release {rid} (draft={r.get("draft")})')
+                  except Exception as e:
+                      print(f'delete release {rid} failed: {e}')
+          PY
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
