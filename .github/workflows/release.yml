@@ -54,14 +54,16 @@ jobs:
         with:
           python-version: ${{ matrix.py }}
 
+      # 先装 pnpm（官方 action，读 packageManager pnpm@11.8.0），setup-node 的 cache: pnpm 才找得到
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.8.0
+
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: pnpm
           cache-dependency-path: creatureforge/web/pnpm-lock.yaml
-
-      - name: Enable pnpm (corepack)
-        run: corepack enable
 
       - name: Install frontend deps
         working-directory: creatureforge/web
