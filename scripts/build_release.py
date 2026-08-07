@@ -64,19 +64,19 @@ def _build(name: str, entry: Path) -> None:
         "--add-data", f"{DATA_SPECIES}{SEP}data/species",
         str(entry),
     ]
-    print(f"\n=== 构建 {name} ===")
+    print(f"\n=== Building {name} ===")
     print("  " + " ".join(cmd))
     subprocess.run(cmd, cwd=ROOT, check=True)
 
 
 def main() -> None:
     if not WEB_DIST.is_dir() or not (WEB_DIST / "index.html").is_file():
-        sys.exit(f"[x] 前端未构建：{WEB_DIST}\n    请先运行：cd creatureforge/web && pnpm build")
+        sys.exit(f"[x] Frontend not built: {WEB_DIST}\n    Run first: cd creatureforge/web && pnpm build")
     if not DATA_SPECIES.is_dir():
-        sys.exit(f"[x] 物种数据不存在：{DATA_SPECIES}")
+        sys.exit(f"[x] Species data not found: {DATA_SPECIES}")
 
     ver = _version_suffix()
-    print(f"CreatureForge 版本: {ver}")
+    print(f"CreatureForge version: {ver}")
 
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
@@ -84,8 +84,8 @@ def main() -> None:
     _build("creature-forge-server", ROOT / "creatureforge" / "server.py")
     _build("creature-forge-cli", ROOT / "creatureforge" / "cli.py")
 
-    # 重命名为带版本号的产物（便于 release 区分）
-    print("\n=== 产物 ===")
+    # rename to versioned artifacts (for release)
+    print("\n=== Artifacts ===")
     for name in ("creature-forge-server", "creature-forge-cli"):
         src = dist / f"{name}{EXE}"
         if src.is_file():
