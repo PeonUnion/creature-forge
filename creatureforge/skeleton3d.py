@@ -595,14 +595,19 @@ def render_motion_3d(skel3d: dict, motion3d: dict, yaw_deg: float = 0.0,
 
 
 def _draw_ground_grid(draw, pose: dict[str, list[float]], yaw_deg, pitch_deg, distance,
-                      center, pan_x, pan_y, ground_y: float | None = None) -> None:
+                      center, pan_x, pan_y, ground_y: float | None = None,
+                      grid_rad: float | None = None) -> None:
     """在脚部基准面（世界 XZ 平面）绘制辅助网格，随相机透视投影（业界查看器标准）。
 
-    ground_y 为空时取关节 Y 最大值（脚部）。网格覆盖模型包围半径的 1.4 倍，6 等分。
+    ground_y 为空时取关节 Y 最大值（脚部）；grid_rad 为网格覆盖半径（应传骨架静态尺寸，
+    避免动画帧 pose 变化导致网格随帧伸缩“呼吸”）。网格覆盖半径的 1.4 倍，6 等分。
     """
     from creatureforge.render import GUIDE
     cx, cy, cz = center or _CENTER
-    rad = max((math.hypot(x - cx, y - cy, z - cz) for x, y, z in pose.values()), default=100.0)
+    if grid_rad is None:
+        rad = max((math.hypot(x - cx, y - cy, z - cz) for x, y, z in pose.values()), default=100.0)
+    else:
+        rad = grid_rad
     rad = rad or 100.0
     gy = ground_y if ground_y is not None else max(v[1] for v in pose.values())
     extent = rad * 1.4
@@ -633,15 +638,20 @@ def render_pose(pose: dict[str, list[float]], bones: list[list[str]],
                 center: tuple[float, float, float] | None = None,
                 pan_x: float = 0.0, pan_y: float = 0.0,
                 grid: bool = True, grid_y: float | None = None,
+                grid_rad: float | None = None,
                 head_radius: float = 22.0) -> Image.Image:
-    """渲染任意 3D 姿势：业界标准轨道相机（固定 FOV）+ 地面网格，distance<=0 自动适配。"""
+    """渲染任意 3D 姿势：业界标准轨道相机（固定 FOV）+ 地面网格，distance<=0 自动适配。
+
+    grid_rad：网格覆盖半径（应传骨架静态尺寸，动画各帧网格保持固定，不随姿势伸缩）。
+    """
     from creatureforge.render import BONE, JOINT, canvas, head, joint, bone
 
     if distance is None or distance <= 0:
         distance = _fit_distance(pose, center or _CENTER)
     image, draw = canvas()
     if grid:
-        _draw_ground_grid(draw, pose, yaw_deg, pitch_deg, distance, center, pan_x, pan_y, grid_y)
+        _draw_ground_grid(draw, pose, yaw_deg, pitch_deg, distance, center, pan_x, pan_y,
+                          grid_y, grid_rad)
     screen_pts = project3d(pose, yaw_deg, pitch_deg, distance, center=center,
                            pan_x=pan_x, pan_y=pan_y)
     # 头部椭圆：多首物种（三头飞龙）画出所有头（head / head_left / head_right），需在骨骼之上

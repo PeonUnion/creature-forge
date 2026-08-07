@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import io
+import math
 from pathlib import Path
 
 from .config import DEFAULT_DATA_DIR
@@ -121,9 +122,11 @@ class ApiService:
         hr = float(skel3d.get("head_radius", 22.0))
         base = {j: list(v) for j, v in skel3d["joints"].items()}
         ground_y = max(v[1] for v in skel3d["joints"].values())
+        grid_rad = max((math.hypot(x - center[0], y - center[1], z - center[2])
+                        for x, y, z in skel3d["joints"].values()), default=100.0)
         dist_abs = _fit_distance(base, center) * max(dist, 0.01)
         img = render_pose(base, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                          grid=grid, grid_y=ground_y, head_radius=hr)
+                          grid=grid, grid_y=ground_y, grid_rad=grid_rad, head_radius=hr)
         return image_to_data_url(img)
 
     def render_motion3d(self, action_id: str, *, species: str | None = None, yaw: float = 0,
@@ -149,6 +152,9 @@ class ApiService:
         center = tuple(skel3d.get("center", (480.0, 300.0, 0.0)))
         hr = float(skel3d.get("head_radius", 22.0))
         ground_y = max(v[1] for v in skel3d["joints"].values())
+        # 网格覆盖半径用骨架静态尺寸（不随动画帧姿势伸缩，避免网格“呼吸”）
+        grid_rad = max((math.hypot(x - center[0], y - center[1], z - center[2])
+                        for x, y, z in skel3d["joints"].values()), default=100.0)
         n = int(motion.get("frame_count", 8))
         base_pose = pose_3d(skel3d, motion, 0)
         dist_abs = _fit_distance(base_pose, center) * max(dist, 0.01)
@@ -157,7 +163,7 @@ class ApiService:
             for i in range(n):
                 p = pose_3d(skel3d, motion, i)
                 imgs.append(render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                                        grid=grid, grid_y=ground_y, head_radius=hr))
+                                        grid=grid, grid_y=ground_y, grid_rad=grid_rad, head_radius=hr))
             w, h = imgs[0].size
             sheet = Image.new("RGB", (w * n, h))
             for i, im in enumerate(imgs):
@@ -171,14 +177,14 @@ class ApiService:
                 p = pose_3d(skel3d, motion, i)
                 urls.append(image_to_data_url(
                     render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                                grid=grid, grid_y=ground_y, head_radius=hr)))
+                                grid=grid, grid_y=ground_y, grid_rad=grid_rad, head_radius=hr)))
             return {"ok": True, "frames": urls, "frame_count": n, "species": species_id}
         if gif:
             imgs = []
             for i in range(n):
                 p = pose_3d(skel3d, motion, i)
                 imgs.append(render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                                        grid=grid, grid_y=ground_y, head_radius=hr)
+                                        grid=grid, grid_y=ground_y, grid_rad=grid_rad, head_radius=hr)
                              .resize((640, 400), Image.Resampling.NEAREST))
             buf = io.BytesIO()
             imgs[0].save(buf, format="GIF", save_all=True, append_images=imgs[1:],
@@ -187,7 +193,7 @@ class ApiService:
                     "species": species_id}
         p = pose_3d(skel3d, motion, frame)
         img = render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                          grid=grid, grid_y=ground_y, head_radius=hr)
+                          grid=grid, grid_y=ground_y, grid_rad=grid_rad, head_radius=hr)
         return {"ok": True, "data_url": image_to_data_url(img), "species": species_id}
 
     def render_preset3d(self, preset_ref: str, *, species: str | None = None,
@@ -218,6 +224,8 @@ class ApiService:
         center = tuple(skel3d.get("center", (480.0, 300.0, 0.0)))
         hr = float(skel3d.get("head_radius", 22.0))
         ground_y = max(v[1] for v in skel3d["joints"].values())
+        grid_rad = max((math.hypot(x - center[0], y - center[1], z - center[2])
+                        for x, y, z in skel3d["joints"].values()), default=100.0)
         if action_id:
             motion = self.species.get_action(species_id, action_id)
             n = int(motion.get("frame_count", 8))
@@ -230,14 +238,14 @@ class ApiService:
                     p = pose_3d(skel3d, motion, i, params=params)
                     urls.append(image_to_data_url(
                         render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                                    grid=grid, grid_y=ground_y, head_radius=hr)))
+                                    grid=grid, grid_y=ground_y, grid_rad=grid_rad, head_radius=hr)))
                 return {"ok": True, "frames": urls, "frame_count": n}
             if gif:
                 imgs = []
                 for i in range(n):
                     p = pose_3d(skel3d, motion, i, params=params)
                     imgs.append(render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                                            grid=grid, grid_y=ground_y, head_radius=hr)
+                                            grid=grid, grid_y=ground_y, grid_rad=grid_rad, head_radius=hr)
                                  .resize((640, 400), Image.Resampling.NEAREST))
                 buf = io.BytesIO()
                 imgs[0].save(buf, format="GIF", save_all=True, append_images=imgs[1:],
@@ -245,13 +253,13 @@ class ApiService:
                 return {"ok": True, "gif": "data:image/gif;base64," + base64.b64encode(buf.getvalue()).decode()}
             p = pose_3d(skel3d, motion, frame, params=params)
             img = render_pose(p, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                              grid=grid, grid_y=ground_y, head_radius=hr)
+                              grid=grid, grid_y=ground_y, grid_rad=grid_rad, head_radius=hr)
             return {"ok": True, "data_url": image_to_data_url(img)}
         # 骨架渲染（应用体型）
         base = {j: list(v) for j, v in skel3d["joints"].items()}
         dist_abs = _fit_distance(base, center) * max(dist, 0.01)
         img = render_pose(base, skel3d["bones"], yaw, pitch, dist_abs, center, pan_x, pan_y,
-                          grid=grid, grid_y=ground_y, head_radius=hr)
+                          grid=grid, grid_y=ground_y, grid_rad=grid_rad, head_radius=hr)
         return {"ok": True, "data_url": image_to_data_url(img)}
 
 
