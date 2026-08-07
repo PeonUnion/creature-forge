@@ -27,6 +27,9 @@ node_modules/
 # pyinstaller 生成的 spec（运行 scripts/build_release.py 时产生）
 /creature-forge-*.spec
 *.spec.bak
+# 本地 pyinstaller 构建二进制（发布由 CI 产出）
+/creature-forge-cli-*
+/creature-forge-server-*
 
 # --- Godot import metadata ---
 *.import

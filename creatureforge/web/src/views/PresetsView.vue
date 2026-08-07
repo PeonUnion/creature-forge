@@ -151,7 +151,7 @@ const newSpeciesId = ref('')
 const tab = ref('body')
 
 // 预览
-const cam = ref({ yaw: 30, pitch: 12, dist: 600, zoom: 1, panX: 0, panY: 0 })
+const cam = ref({ yaw: 30, pitch: 12, dist: 600, zoom: 1, panX: 0, panY: 0, camX: 0, camY: 0, camZ: 0 })
 const previewAction = ref('')
 const previewUrl = ref(null)
 const previewFrames = ref([])
@@ -160,7 +160,7 @@ const rendering = ref(false)
 let renderTimer = null
 let playTimer = null
 
-const camQS = () => `yaw=${cam.value.yaw}&pitch=${cam.value.pitch}&dist=${cam.value.dist}&zoom=${cam.value.zoom}&pan_x=${cam.value.panX}&pan_y=${cam.value.panY}`
+const camQS = () => `yaw=${cam.value.yaw}&pitch=${cam.value.pitch}&dist=${cam.value.dist}&zoom=${cam.value.zoom}&pan_x=${cam.value.panX}&pan_y=${cam.value.panY}&cam_x=${cam.value.camX}&cam_y=${cam.value.camY}&cam_z=${cam.value.camZ}`
 
 const schema = computed(() => current.value?.schema_info || { body_params: {}, actions: {} })
 const bodyParamItems = computed(() => {

@@ -138,12 +138,14 @@ def cmd_render(args) -> None:
     if args.mode == "skeleton":
         data_url = svc.render_skeleton3d(
             args.id, yaw=args.yaw, pitch=args.pitch, dist=args.dist, zoom=args.zoom,
-            pan_x=args.pan_x, pan_y=args.pan_y, body=_parse_kv(args.body) or None)
+            pan_x=args.pan_x, pan_y=args.pan_y, cam_x=args.cam_x, cam_y=args.cam_y, cam_z=args.cam_z,
+            body=_parse_kv(args.body) or None)
         _save_data_url(out, data_url)
     elif args.mode == "motion":
         result = svc.render_motion3d(
             args.id, species=args.species, yaw=args.yaw, pitch=args.pitch, dist=args.dist,
             zoom=args.zoom, pan_x=args.pan_x, pan_y=args.pan_y,
+            cam_x=args.cam_x, cam_y=args.cam_y, cam_z=args.cam_z,
             gif=args.gif, frames=False)
         if "gif" in result:
             _save_data_url(out, result["gif"])
@@ -152,7 +154,8 @@ def cmd_render(args) -> None:
     elif args.mode == "preset":
         result = svc.render_preset3d(
             args.id, action_id=args.action, yaw=args.yaw, pitch=args.pitch, dist=args.dist,
-            zoom=args.zoom, pan_x=args.pan_x, pan_y=args.pan_y, gif=args.gif)
+            zoom=args.zoom, pan_x=args.pan_x, pan_y=args.pan_y,
+            cam_x=args.cam_x, cam_y=args.cam_y, cam_z=args.cam_z, gif=args.gif)
         if "gif" in result:
             _save_data_url(out, result["gif"])
         else:
@@ -162,7 +165,8 @@ def cmd_render(args) -> None:
             "live", species=args.species, body=_parse_kv(args.body) or None,
             actions=_parse_kv(args.actions) or None, action_id=args.action,
             yaw=args.yaw, pitch=args.pitch, dist=args.dist, zoom=args.zoom,
-            pan_x=args.pan_x, pan_y=args.pan_y, gif=args.gif)
+            pan_x=args.pan_x, pan_y=args.pan_y, cam_x=args.cam_x, cam_y=args.cam_y, cam_z=args.cam_z,
+            gif=args.gif)
         if "gif" in result:
             _save_data_url(out, result["gif"])
         else:
@@ -176,6 +180,9 @@ def _add_render_opts(sp) -> None:
     sp.add_argument("--pitch", type=float, default=0)
     sp.add_argument("--dist", type=float, default=600)
     sp.add_argument("--zoom", type=float, default=1)
+    sp.add_argument("--cam-x", type=float, default=0, dest="cam_x", help="相机自身 X 偏移")
+    sp.add_argument("--cam-y", type=float, default=0, dest="cam_y", help="相机自身高度（Y 偏移）")
+    sp.add_argument("--cam-z", type=float, default=0, dest="cam_z", help="相机自身 Z 偏移")
     sp.add_argument("--pan-x", type=float, default=0, dest="pan_x")
     sp.add_argument("--pan-y", type=float, default=0, dest="pan_y")
     sp.add_argument("--out", required=True, help="输出文件（.png / .gif）")

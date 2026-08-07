@@ -198,13 +198,16 @@ def project3d(joints3d: dict[str, list[float]], yaw_deg: float = 0.0,
               pitch_deg: float = 0.0, distance: float = 600.0,
               zoom: float = 1.0, center: tuple[float, float, float] | None = None,
               pan_x: float = 0.0, pan_y: float = 0.0,
+              cam_x: float = 0.0, cam_y: float = 0.0, cam_z: float = 0.0,
               ) -> dict[str, tuple[float, float]]:
-    """透视相机投影：yaw（水平角）+ pitch（俯仰角）+ distance（距离）+ pan（平移）。
+    """透视相机投影：yaw（水平角）+ pitch（俯仰角）+ distance（距离）+ pan（平移）+ 相机位置。
 
     - 相机沿视线看向骨架中心（默认画布中心，可传 preset 的 center），先绕 Y 再绕 X。
     - 透视除法：近大远小。distance 越小 → 相机越近 → 透视越强（放大）。
     - zoom 额外缩放（焦距倍率），distance 很大时退化为正交（≈现有 front/side）。
     - pan_x/pan_y：相机观察点平移（像素），等价于移动相机位置/画面平移。
+    - cam_x/cam_y/cam_z：相机**自身位置**偏移（模型坐标系，视线始终看向中心）：
+        cam_y 正 = 相机上移（俯视看模型下方）；cam_x 正 = 相机右移；cam_z 正 = 相机沿视线远离（缩小）。
     返回 {joint: (sx, sy)}（画布坐标）。
     """
     yaw = math.radians(yaw_deg)
@@ -215,18 +218,18 @@ def project3d(joints3d: dict[str, list[float]], yaw_deg: float = 0.0,
     f = max(distance, 1.0) * zoom
     out: dict[str, tuple[float, float]] = {}
     for name, (x, y, z) in joints3d.items():
-        # 平移到骨架中心坐标系
-        x -= cx0
-        y -= cy0
-        z -= cz0
+        # 平移到骨架中心坐标系，并叠加相机位置偏移（相机移动 = 模型反向移动）
+        x -= cx0 + cam_x
+        y -= cy0 + cam_y
+        z -= cz0 + cam_z
         # 绕 Y：x' = x*cos + z*sin ; z' = -x*sin + z*cos
         x1 = x * cos_y + z * sin_y
         z1 = -x * sin_y + z * cos_y
         # 绕 X：y' = y*cos - z*sin ; z' = y*sin + z*cos
         y2 = y * cos_p - z1 * sin_p
         z2 = y * sin_p + z1 * cos_p
-        # 透视除法（相机在 +z=distance，看向原点）+ 相机平移（pan）
-        z_cam = max(distance - z2, 1.0)
+        # 透视除法（相机在 +z=distance+cam_z，看向原点）+ 相机平移（pan）
+        z_cam = max(distance - z2 + cam_z, 1.0)
         sx = cx0 + x1 * f / z_cam + pan_x
         sy = cy0 + y2 * f / z_cam + pan_y
         out[name] = (sx, sy)
@@ -588,19 +591,21 @@ def render_pose(pose: dict[str, list[float]], bones: list[list[str]],
                 distance: float = 600.0, zoom: float = 1.0,
                 center: tuple[float, float, float] | None = None,
                 pan_x: float = 0.0, pan_y: float = 0.0,
+                cam_x: float = 0.0, cam_y: float = 0.0, cam_z: float = 0.0,
                 autofit: tuple[float, float, float] | None = None,
                 head_radius: float = 22.0) -> Image.Image:
-    """渲染任意 3D 姿势：角度（yaw/pitch）+ 距离（透视）+ 自动适配居中 + zoom/pan 相对量。
+    """渲染任意 3D 姿势：角度（yaw/pitch）+ 距离（透视）+ 相机位置 + 自动适配居中 + zoom/pan 相对量。
 
     ``autofit``：可传入固定的 (scale, tx, ty) 变换（如 GIF 各帧统一用首帧的适配，
     避免逐帧独立适配造成缩放抖动）。
+    cam_x/cam_y/cam_z：相机自身位置偏移（见 project3d）。
     """
     from creatureforge.render import BONE, JOINT, canvas, head, joint, bone
 
     image, draw = canvas()
     # 先以 zoom=1/pan=0 投影（distance 仅影响透视），再做自动适配（填满画布并居中）
     screen_pts = project3d(pose, yaw_deg, pitch_deg, distance, 1.0, center=center,
-                           pan_x=0.0, pan_y=0.0)
+                           pan_x=0.0, pan_y=0.0, cam_x=cam_x, cam_y=cam_y, cam_z=cam_z)
     if autofit is not None:
         scale, tx, ty = autofit
     else:
@@ -621,14 +626,15 @@ def render_pose(pose: dict[str, list[float]], bones: list[list[str]],
 def render_view(skel3d: dict, yaw_deg: float = 0.0, pitch_deg: float = 0.0,
                 distance: float = 600.0, zoom: float = 1.0,
                 pan_x: float = 0.0, pan_y: float = 0.0,
+                cam_x: float = 0.0, cam_y: float = 0.0, cam_z: float = 0.0,
                 width: int = 640, height: int = 480) -> Image.Image:
-    """渲染 3D 骨架：角度（yaw/pitch）+ 距离（透视）+ 自动适配居中 + zoom/pan 相对量。"""
+    """渲染 3D 骨架：角度（yaw/pitch）+ 距离（透视）+ 相机位置 + 自动适配居中 + zoom/pan 相对量。"""
     from creatureforge.render import BONE, JOINT, canvas, head, joint, bone
 
     image, draw = canvas()
     center = tuple(skel3d.get("center", _CENTER))
     screen_pts = project3d(skel3d["joints"], yaw_deg, pitch_deg, distance, 1.0, center=center,
-                           pan_x=0.0, pan_y=0.0)
+                           pan_x=0.0, pan_y=0.0, cam_x=cam_x, cam_y=cam_y, cam_z=cam_z)
     scale, tx, ty = _autofit_transform(screen_pts, zoom, pan_x, pan_y)
     screen_pts = {k: (v[0] * scale + tx, v[1] * scale + ty) for k, v in screen_pts.items()}
     # 头部椭圆：多首物种（三头飞龙）画出所有头

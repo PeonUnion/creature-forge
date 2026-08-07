@@ -17,11 +17,25 @@
           <span class="cam-panel-title">相机设置</span>
           <el-button size="small" text type="primary" @click="reset" icon="RefreshLeft">重置</el-button>
         </div>
-        <div class="cam-row" v-for="item in items" :key="item.key">
-          <span class="cam-label">{{ item.label }}</span>
-          <el-slider class="cam-slider" :min="item.min" :max="item.max" :step="item.step"
-                     :model-value="cam[item.key]" @update:model-value="set(item.key, $event)" />
-          <span class="cam-val">{{ fmt(item, cam[item.key]) }}</span>
+        <!-- 轨道（绕模型中心）：角度/距离/缩放/平移 -->
+        <div class="cam-group">
+          <div class="cam-group-title">轨道（绕模型中心）</div>
+          <div class="cam-row" v-for="item in orbitItems" :key="item.key">
+            <span class="cam-label">{{ item.label }}</span>
+            <el-slider class="cam-slider" :min="item.min" :max="item.max" :step="item.step"
+                       :model-value="cam[item.key]" @update:model-value="set(item.key, $event)" />
+            <span class="cam-val">{{ fmt(item, cam[item.key]) }}</span>
+          </div>
+        </div>
+        <!-- 相机自身位置（XYZ，尤其高度）：视线始终看向模型中心 -->
+        <div class="cam-group">
+          <div class="cam-group-title">相机位置（自身 XYZ / 高度）</div>
+          <div class="cam-row" v-for="item in posItems" :key="item.key">
+            <span class="cam-label">{{ item.label }}</span>
+            <el-slider class="cam-slider" :min="item.min" :max="item.max" :step="item.step"
+                       :model-value="cam[item.key]" @update:model-value="set(item.key, $event)" />
+            <span class="cam-val">{{ fmt(item, cam[item.key]) }}</span>
+          </div>
         </div>
         <div class="cam-tip">💡 直接拖拽预览图即可旋转视角</div>
       </div>
@@ -33,11 +47,11 @@
 import { ref, computed } from 'vue'
 
 /**
- * 3D 相机控制（轨道相机：绕模型中心旋转，从一个空间点看模型）。
+ * 3D 相机控制（轨道相机：绕模型中心旋转 + 相机自身位置 XYZ/高度可调）。
  * - 常驻：快捷视角按钮（正面/侧面/背面/45°/俯视/微仰）
- * - 面板：yaw/pitch/dist/zoom/pan 细调 + 重置（隐藏收纳，不常驻）
+ * - 面板：轨道（yaw/pitch/dist/zoom/pan）+ 相机位置（camX/camY/camZ）+ 重置
  * - 配合预览图拖拽旋转（见 useOrbitDrag）
- * v-model 绑定相机状态 { yaw, pitch, dist, zoom, panX, panY }。
+ * v-model 绑定相机状态 { yaw, pitch, dist, zoom, panX, panY, camX, camY, camZ }。
  */
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -49,7 +63,7 @@ const panelOpen = ref(false)
 const cam = computed(() => props.modelValue)
 const set = (key, val) => emit('update:modelValue', { ...props.modelValue, [key]: val })
 
-const DEFAULT_CAM = { yaw: 30, pitch: 12, dist: 600, zoom: 1, panX: 0, panY: 0 }
+const DEFAULT_CAM = { yaw: 30, pitch: 12, dist: 600, zoom: 1, panX: 0, panY: 0, camX: 0, camY: 0, camZ: 0 }
 function reset() { emit('update:modelValue', { ...DEFAULT_CAM }) }
 
 const presets = [
@@ -67,20 +81,20 @@ const activePreset = computed(() => {
   return p ? p.label : ''
 })
 
-const items = computed(() => {
-  const base = [
-    { key: 'yaw', label: '水平角', unit: '°', min: 0, max: 360, step: 1 },
-    { key: 'pitch', label: '俯仰角', unit: '°', min: -60, max: 60, step: 1 },
-    { key: 'dist', label: '距离', unit: '', min: 200, max: 1500, step: 20 },
-  ]
-  if (props.compact) return base
-  base.push(
-    { key: 'zoom', label: '缩放', unit: '×', min: 0.5, max: 2, step: 0.05 },
-    { key: 'panX', label: '平移 X', unit: '', min: -300, max: 300, step: 10 },
-    { key: 'panY', label: '平移 Y', unit: '', min: -200, max: 200, step: 10 },
-  )
-  return base
-})
+// 统一面板项（骨架预览与动作预览一致，与 compact 无关；compact 仅影响样式）
+const orbitItems = [
+  { key: 'yaw', label: '水平角', unit: '°', min: 0, max: 360, step: 1 },
+  { key: 'pitch', label: '俯仰角', unit: '°', min: -60, max: 60, step: 1 },
+  { key: 'dist', label: '距离', unit: '', min: 200, max: 1500, step: 20 },
+  { key: 'zoom', label: '缩放', unit: '×', min: 0.5, max: 2, step: 0.05 },
+  { key: 'panX', label: '平移 X', unit: '', min: -300, max: 300, step: 10 },
+  { key: 'panY', label: '平移 Y', unit: '', min: -200, max: 200, step: 10 },
+]
+const posItems = [
+  { key: 'camX', label: '相机 X', unit: '', min: -400, max: 400, step: 10 },
+  { key: 'camY', label: '相机高度', unit: '', min: -400, max: 400, step: 10 },
+  { key: 'camZ', label: '相机 Z', unit: '', min: -400, max: 400, step: 10 },
+]
 
 const fmt = (item, v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v) + item.unit
 </script>
@@ -91,6 +105,8 @@ const fmt = (item, v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v)
 .cam-panel { display: flex; flex-direction: column; gap: 6px; }
 .cam-panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .cam-panel-title { font-weight: 600; color: #303133; font-size: .9rem; }
+.cam-group { display: flex; flex-direction: column; gap: 4px; }
+.cam-group-title { font-size: .72rem; color: #909399; margin-top: 2px; border-top: 1px dashed #e4e7ed; padding-top: 6px; }
 .cam-row { display: flex; align-items: center; gap: 8px; }
 .cam-label { width: 52px; flex-shrink: 0; color: #606266; font-size: .8rem; }
 .cam-slider { flex: 1; }
