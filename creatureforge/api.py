@@ -108,6 +108,46 @@ class ApiService:
     # 3D 渲染
     # ------------------------------------------------------------------
 
+    def skeleton3d_data(self, species_id: str, *, body: dict | None = None) -> dict:
+        """返回应用体型后的骨架 3D 数据（前端 WebGL 实时渲染用，不渲染 PNG）。
+
+        joints 为 {关节名: [x,y,z]}（Y-down 项目坐标），bones 为连接对，center 为观察中心。
+        """
+        from .skeleton3d import build_skeleton_3d
+        skel3d = build_skeleton_3d(species_id, body=body, species_root=self.species._root)
+        return {"ok": True,
+                "joints": {k: list(v) for k, v in skel3d["joints"].items()},
+                "bones": [list(b) for b in skel3d["bones"]],
+                "center": list(skel3d.get("center", (480.0, 300.0, 0.0))),
+                "head_radius": float(skel3d.get("head_radius", 22.0))}
+
+    def motion3d_data(self, action_id: str, *, species: str | None = None,
+                      params: dict | None = None) -> dict:
+        """返回动作每帧 3D 关节数据（前端 WebGL 动画播放用，不渲染 PNG）。
+
+        frames 为每帧 {关节名: [x,y,z]}（Y-down 项目坐标），bones 连接对，frame_count/fps。
+        """
+        from .skeleton3d import build_skeleton_3d, pose_3d
+        if species:
+            motion = self.species.get_action(species, action_id)
+            species_id = species
+        else:
+            found = self.species.find_action(action_id)
+            if not found:
+                raise KeyError(f"3D action not found: {action_id}")
+            species_id, motion = found
+        skel3d = build_skeleton_3d(species_id, species_root=self.species._root)
+        n = int(motion.get("frame_count", 8))
+        p = params or {}
+        frames = [pose_3d(skel3d, motion, i, params=p) for i in range(n)]
+        return {"ok": True,
+                "bones": [list(b) for b in skel3d["bones"]],
+                "frames": frames,
+                "frame_count": n,
+                "fps": int(motion.get("fps", 6)) or 6,
+                "center": list(skel3d.get("center", (480.0, 300.0, 0.0))),
+                "head_radius": float(skel3d.get("head_radius", 22.0))}
+
     def render_skeleton3d(self, species_id: str, *, yaw: float = 0, pitch: float = 0,
                           dist: float = 1.0, pan_x: float = 0, pan_y: float = 0,
                           grid: bool = True, body: dict | None = None) -> str:

@@ -129,11 +129,15 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         pan_x = float(qs.get("pan_x", ["0"])[0])
         pan_y = float(qs.get("pan_y", ["0"])[0])
         grid = qs.get("grid", ["1"])[0] not in ("0", "false")
+        data = qs.get("data", ["0"])[0] in ("1", "true")
         # 其余查询参数作为体型参数（param_chains 驱动，3D 空间应用）
-        cam_keys = {"yaw", "pitch", "dist", "pan_x", "pan_y", "grid"}
+        cam_keys = {"yaw", "pitch", "dist", "pan_x", "pan_y", "grid", "data"}
         body = {k: float(v[0]) for k, v in qs.items() if k not in cam_keys}
         species_id = parts[0]
         try:
+            if data:
+                # WebGL 实时渲染：返回骨架 3D 数据（不走 Pillow PNG）
+                return self._json(self.api.skeleton3d_data(species_id, body=body or None))
             data_url = self.api.render_skeleton3d(
                 species_id, yaw=yaw, pitch=pitch, dist=dist,
                 pan_x=pan_x, pan_y=pan_y, grid=grid,
@@ -161,6 +165,14 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         gif = qs.get("gif", ["0"])[0] in ("1", "true")
         sprite = qs.get("sprite", ["0"])[0] in ("1", "true")
         species_q = qs.get("species", [None])[0]
+        # data=1 → 返回动作每帧 3D 关节数据（前端 WebGL 动画播放）
+        if qs.get("data", ["0"])[0] in ("1", "true"):
+            try:
+                return self._json(self.api.motion3d_data(parts[0], species=species_q))
+            except KeyError as e:
+                return self._json({"ok": False, "error": str(e)}, 404)
+            except Exception as e:
+                return self._json({"ok": False, "error": str(e)}, 500)
         try:
             result = self.api.render_motion3d(
                 parts[0], species=species_q, yaw=yaw, pitch=pitch, dist=dist,

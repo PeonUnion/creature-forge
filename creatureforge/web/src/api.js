@@ -85,8 +85,12 @@ export const api = {
   /** 3D 骨架：任意角度(yaw/pitch) + 距离(透视) 渲染 PNG（species_id 路径） */
   renderSkeleton3d: (id, qs) => raw(`/api/skeleton3d/${encodeURIComponent(id)}?${qs}`),
 
+  /** 骨架 3D 数据（WebGL 实时渲染用）：应用体型后的 joints/bones/center，不走 Pillow */
+  skeleton3dData: (id, qs = 'data=1') => raw(`/api/skeleton3d/${encodeURIComponent(id)}?${qs}`),
+
   /** 3D 动作：任意角度 + 距离 单帧渲染 PNG（动作按 species 获取与渲染） */
   renderMotion3d: (id, qs) => raw(`/api/motion3d/${encodeURIComponent(id)}?${qs}`),
+  motion3dData: (id, qs = '') => raw(`/api/motion3d/${encodeURIComponent(id)}?${qs}&data=1`),
 
   // -- 预设 Preset（独立入口：预设 = 物种实例，调整体型 + 动作幅度） --
 

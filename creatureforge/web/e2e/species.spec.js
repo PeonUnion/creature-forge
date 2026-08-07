@@ -25,9 +25,23 @@ test.describe('物种管理（全量 E2E）', () => {
   test('骨架预览：渲染 → 快捷视角 → 相机收纳面板', async ({ page }) => {
     await page.locator('.list-item .item-main', { hasText: '人类骨骼拓扑' }).click()
     await page.locator('.el-tabs__item', { hasText: '骨架预览' }).click()
-    // 点渲染生成骨架图
+    // 点渲染加载 WebGL 骨架（Three.js canvas）
     await page.locator('button', { hasText: '渲染' }).click()
-    await expect(page.locator('.skel-draggable img')).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 30_000 })
+    // WebGL 实际渲染内容（非空白）：readPixels 统计非背景色像素
+    await expect.poll(() => page.evaluate(() => {
+      const c = document.querySelector('.sk3d canvas')
+      const gl = c && (c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl'))
+      if (!c || !gl) return 0
+      const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight
+      const px = new Uint8Array(w * h * 4)
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px)
+      let n = 0
+      for (let i = 0; i < px.length; i += 4) {
+        if (px[i] !== 0x11 || px[i + 1] !== 0x18 || px[i + 2] !== 0x27) n++
+      }
+      return n
+    }), { timeout: 10_000 }).toBeGreaterThan(100)
     // 快捷视角按钮：点侧面 → 高亮 + 自动重渲染
     await page.locator('button', { hasText: '侧面' }).click()
     await expect(page.locator('button', { hasText: '侧面' })).toHaveClass(/primary/)
@@ -51,47 +65,39 @@ test.describe('物种管理（全量 E2E）', () => {
     await expect(page.locator('.crumb-now', { hasText: 'walk3d' })).toBeVisible({ timeout: 20_000 })
     // 动作 JSON 定义区（el-input textarea，class 在 wrapper）
     await expect(page.locator('.json-editor')).toBeVisible()
-    // 动作预览自动渲染（帧播放，播放按钮启用）
-    await expect(page.locator('.mp-sprite')).toBeVisible({ timeout: 40_000 })
-    await expect(page.locator('button', { hasText: '播放' })).toBeEnabled()
+    // 动作预览自动渲染（WebGL 3D，播放按钮 + 帧计数）
+    await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 40_000 })
     // 帧计数徽章 1/16
-    await expect(page.locator('.mp-badge', { hasText: '16' })).toBeVisible()
-    // 点「播放」→ CSS 动画真实运行（sprite 逐帧动画）
-    await page.locator('button', { hasText: '播放' }).click()
-    await expect(page.locator('button', { hasText: '暂停' })).toBeVisible()
-    await expect.poll(() => page.evaluate(() => {
-      const a = document.querySelector('.mp-sprite')?.getAnimations?.()[0]
-      return a ? a.playState : 'none'
-    })).toBe('running')
-    // 画面真实在动且方向正确：background-position 从 0 向左位移（sprite 逐帧播放）
-    await expect.poll(() => page.evaluate(() => {
-      return getComputedStyle(document.querySelector('.mp-sprite')).backgroundPosition
-    }), { timeout: 5000 }).not.toBe('0px 0px')
-    await page.locator('button', { hasText: '暂停' }).click()
+    await expect(page.locator('.sk3d-badge', { hasText: '16' })).toBeVisible()
+    // 点「播放」→ WebGL 逐帧播放（帧计数递增）
+    await page.locator('.sk3d-btn').click()
+    await expect(page.locator('.sk3d-btn', { hasText: '暂停' })).toBeVisible()
+    await expect.poll(() => page.locator('.sk3d-badge').textContent(), { timeout: 10_000 }).not.toBe('1 / 16')
+    await page.locator('.sk3d-btn').click()  // 暂停
     // GIF 导出（触发浏览器下载）
     const dl = page.waitForEvent('download', { timeout: 60_000 })
-    await page.locator('button', { hasText: '导出 GIF' }).click()
+    await page.locator('.preview-controls button', { hasText: '导出 GIF' }).click()
     const download = await dl
     expect(download.suggestedFilename()).toMatch(/\.gif$/)
   })
 
-  test('动作预览：拖拽旋转视角（轨道相机）', async ({ page }) => {
+  test('动作预览：拖拽旋转视角（WebGL 把玩手办）', async ({ page }) => {
     await page.locator('.list-item .item-main', { hasText: '人类骨骼拓扑' }).click()
     await page.locator('.el-tabs__item', { hasText: '动作管理' }).click()
     await expect(page.locator('.cell-title', { hasText: 'Walk 3D' })).toBeVisible()
     await page.locator('.el-table button', { hasText: '编辑' }).first().click()
-    await expect(page.locator('.mp-sprite')).toBeVisible({ timeout: 40_000 })
+    await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 40_000 })
     // 初始：正面应高亮（openAction 默认 yaw=0）
     await expect(page.locator('button', { hasText: '正面' })).toHaveClass(/primary/)
-    // 在预览图上拖拽（水平 +70px → yaw 增加，离开快捷预设角度）
-    const stage = page.locator('.mp-stage')
+    // 在预览图（canvas）上拖拽 → TrackballControls 转动模型本体 → 相机角度变化
+    const stage = page.locator('.sk3d')
     await stage.scrollIntoViewIfNeeded()
     const box = await stage.boundingBox()
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.down()
     await page.mouse.move(box.x + box.width / 2 + 70, box.y + box.height / 2 + 20, { steps: 8 })
     await page.mouse.up()
-    // 拖拽后正面取消高亮（相机已旋转到自定义角度）
+    // 拖拽后正面取消高亮（emit view → cam 更新）
     await expect(page.locator('button', { hasText: '正面' })).not.toHaveClass(/primary/, { timeout: 5_000 })
   })
 

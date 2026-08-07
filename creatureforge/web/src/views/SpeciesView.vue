@@ -122,20 +122,15 @@
             <div class="preview-controls">
               <CameraControls v-model="cam" compact />
               <el-button size="small" type="primary" @click="renderAction" :loading="motionRenderLoading" icon="Refresh">渲染</el-button>
+              <el-button size="small" :disabled="!motionData" :loading="gifLoading" icon="Download" @click="exportMotionGif">导出 GIF</el-button>
             </div>
           </div>
-          <MotionPreview
-            :sprite="motionSprite"
-            :frame-count="motionFrameCount"
-            :frame-w="motionFrameW"
-            :frame-h="motionFrameH"
-            :fps="motionFps"
-            :cam="cam"
-            :species-id="selectedSpecies?.id"
-            :motion-id="actionEditor?.motion_id"
-            :loading="motionRenderLoading"
-            @update:cam="cam = $event"
-          />
+          <Skeleton3DViewer v-if="motionData" ref="motionViewer"
+            :frames="motionData.frames" :bones="motionData.bones"
+            :head-radius="motionData.head_radius" :center="motionData.center"
+            :fps="motionData.fps"
+            @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
+          <div class="preview-empty" v-else><p>点击「渲染」加载 3D 动作预览（左键拖拽=转动手办 · 右键平移 · 滚轮缩放）</p></div>
         </div>
       </section>
 
@@ -227,8 +222,10 @@
                   <el-button size="small" type="primary" @click="renderAllViews" :loading="previewLoading" icon="Refresh">渲染</el-button>
                 </div>
               </div>
-              <div v-if="skeletonPreview" class="motion-preview skel-draggable" @mousedown="onSkelDragDown"><img :src="skeletonPreview" /></div>
-              <div class="preview-empty" v-else><p>点击「渲染」生成 3D 骨架预览（也可拖拽画面旋转视角）</p></div>
+              <Skeleton3DViewer v-if="skeletonData" ref="skeletonViewer"
+                :joints="skeletonData.joints" :bones="skeletonData.bones"
+                :head-radius="skeletonData.head_radius" :center="skeletonData.center" />
+              <div class="preview-empty" v-else><p>点击「渲染」加载 3D 骨架预览（左键拖拽=转动手办 · 右键平移 · 滚轮缩放）</p></div>
             </div>
           </el-tab-pane>
         </el-tabs>
@@ -251,8 +248,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { api } from '../api.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CameraControls from '../components/CameraControls.vue'
-import MotionPreview from '../components/MotionPreview.vue'
-import { useOrbitDrag } from '../composables/useOrbitDrag.js'
+import Skeleton3DViewer from '../components/Skeleton3DViewer.vue'
 
 const loading = ref(true)
 const speciesList = ref([])
@@ -264,41 +260,32 @@ const editMode = ref(null)
 const isCreating = ref(false)
 const saving = ref(false)
 const previews = ref(null)
-const skeletonPreview = ref(null)
+const skeletonData = ref(null)   // WebGL 骨架数据 {joints, bones, center, head_radius}
+const skeletonViewer = ref(null) // Skeleton3DViewer 实例（setView 控制相机）
 const previewLoading = ref(false)
 const actionEditor = ref(null)
 const actionJson = ref('')
-// 动作预览：sprite 拼接大图 + 帧元数据（一次请求/解码，CSS 动画播放）
-const motionSprite = ref('')
-const motionFrameCount = ref(0)
-const motionFrameW = ref(0)
-const motionFrameH = ref(0)
-const motionFps = ref(6)
-function resetMotionSprite() {
-  motionSprite.value = ''
-  motionFrameCount.value = 0
-  motionFrameW.value = 0
-  motionFrameH.value = 0
-  motionFps.value = 6
-}
+// 动作预览：WebGL 动作数据 {bones, frames(每帧joints), fps, ...}
+const motionData = ref(null)
+const motionViewer = ref(null)  // Skeleton3DViewer 实例（setView 控制相机）
+const gifLoading = ref(false)
+function resetMotionData() { motionData.value = null }
 const motionRenderLoading = ref(false)
 const cam = ref({ yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 })
 const camQS = () => `yaw=${cam.value.yaw}&pitch=${cam.value.pitch}&dist=${cam.value.dist}&pan_x=${cam.value.panX}&pan_y=${cam.value.panY}`
 
-// 轨道相机：骨架预览拖拽旋转（改 cam → watch 自动重渲染）
-const { onMouseDown: onSkelDragDown } = useOrbitDrag({
-  getCam: () => cam.value,
-  setCam: (c) => { cam.value = c },
-})
-
-// 相机变化 → debounce 自动重渲染（快捷按钮 / 面板细调 / 拖拽旋转都走这里）
+// 相机变化 → 快捷视角/面板 → WebGL 相机 setView（数据已加载，无需重请求）
 let camTimer = null
 watch(cam, () => {
   if (camTimer) clearTimeout(camTimer)
   camTimer = setTimeout(() => {
-    if (actionEditor.value?.motion_id) renderAction()
-    else if (selectedSpecies.value) renderAllViews()
-  }, 350)
+    if (skeletonData.value && skeletonViewer.value) {
+      skeletonViewer.value.setView(cam.value.yaw, cam.value.pitch, cam.value.dist, cam.value.panX, cam.value.panY)
+    }
+    if (motionData.value && motionViewer.value) {
+      motionViewer.value.setView(cam.value.yaw, cam.value.pitch, cam.value.dist, cam.value.panX, cam.value.panY)
+    }
+  }, 120)
 }, { deep: true })
 
 const editForm = ref({ species_id:'', title:'', description:'', jointsStr:'', bonesStr:'', chainsStr:'', paramChainsStr:'', followChainsStr:'', followConfigStr:'', defaultStr:'' })
@@ -321,8 +308,8 @@ async function selectSpecies(sp) {
   selectedSpecies.value = sp
   actionEditor.value = null
   previews.value = null
-  skeletonPreview.value = null
-  resetMotionSprite()
+  skeletonData.value = null
+  resetMotionData()
   editMode.value = null
   try {
     speciesDetail.value = await api.speciesDetail(sp.id)
@@ -341,7 +328,7 @@ async function openAction(sp, actionId) {
     const act = await api.actionDetail(sp.id, actionId)
     actionEditor.value = act
     actionJson.value = JSON.stringify(act, null, 2)
-    resetMotionSprite()
+    resetMotionData()
     // 进入动作预览：默认「正面」视角并自动渲染
     cam.value = { ...cam.value, yaw: 0, pitch: 0 }
     await renderAction()
@@ -351,7 +338,7 @@ async function openAction(sp, actionId) {
 function startCreateAction() {
   actionEditor.value = { schema:'creatureforge_motion3d_v1', motion_id:'', title:'', description:'', species:selectedSpecies.value.id, frame_count:8, params:{}, root3d:{dy:{phase:true}}, offsets3d:{}, ik3d:{} }
   actionJson.value = JSON.stringify(actionEditor.value, null, 2)
-  resetMotionSprite()
+  resetMotionData()
 }
 
 async function saveAction() {
@@ -394,9 +381,9 @@ async function renderAllViews() {
   if (!selectedSpecies.value) return
   previewLoading.value = true
   try {
-    // 基于物种默认参数 + 动态相机渲染（数据驱动，不依赖预设）
-    const r3 = await api.renderSkeleton3d(selectedSpecies.value.id, camQS())
-    skeletonPreview.value = r3.data_url
+    // WebGL：获取骨架 3D 数据，前端 Three.js GPU 实时渲染（拖拽即时，无逐帧后端请求）
+    const r = await api.skeleton3dData(selectedSpecies.value.id)
+    skeletonData.value = r
   } catch(e) { ElMessage.error(e.message) }
   previewLoading.value = false
 }
@@ -405,19 +392,28 @@ async function renderAction() {
   if (!actionEditor.value?.motion_id) { ElMessage.warning('请先填写 motion_id'); return }
   motionRenderLoading.value = true
   try {
-    // 3D 动作：sprite=1 返回横向拼接大图 + 帧元数据，前端 CSS 动画播放（一次请求/解码，性能最优）
-    const r = await api.renderMotion3d(actionEditor.value.motion_id, `species=${selectedSpecies.value.id}&` + camQS() + '&sprite=1')
-    if (r.sprite) {
-      motionSprite.value = r.sprite
-      motionFrameCount.value = r.frame_count || 0
-      motionFrameW.value = r.frame_w || 0
-      motionFrameH.value = r.frame_h || 0
-      motionFps.value = r.fps || 6
-    } else {
-      resetMotionSprite()
-    }
+    // WebGL：获取动作每帧 3D 关节数据，前端 Three.js GPU 逐帧播放（拖拽/播放即时，无逐帧后端请求）
+    const r = await api.motion3dData(actionEditor.value.motion_id, `species=${selectedSpecies.value.id}`)
+    if (r.ok && r.frames) motionData.value = r
+    else { motionData.value = null; ElMessage.error('动作数据获取失败') }
   } catch(e) { ElMessage.error(e.message) }
   motionRenderLoading.value = false
+}
+
+/** 导出 GIF：后端按当前相机视角逐帧合成，浏览器下载 */
+async function exportMotionGif() {
+  if (!actionEditor.value?.motion_id || !selectedSpecies.value) { ElMessage.warning('请先渲染动作'); return }
+  gifLoading.value = true
+  try {
+    const qs = `species=${selectedSpecies.value.id}&` + camQS() + '&grid=0&gif=1'
+    const r = await api.renderMotion3d(actionEditor.value.motion_id, qs)
+    if (r.gif) {
+      const a = document.createElement('a'); a.href = r.gif; a.download = `${actionEditor.value.motion_id}.gif`
+      document.body.appendChild(a); a.click(); a.remove()
+      ElMessage.success('GIF 已导出')
+    } else ElMessage.error('GIF 生成失败')
+  } catch(e) { ElMessage.error(e.message) }
+  gifLoading.value = false
 }
 
 // -- 物种 CRUD --

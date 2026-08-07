@@ -14,6 +14,9 @@ importers:
       element-plus:
         specifier: ^2.9.1
         version: 2.14.3(vue@3.5.41)
+      three:
+        specifier: ^0.185.1
+        version: 0.185.1
       vue:
         specifier: ^3.5.13
         version: 3.5.41
@@ -839,6 +842,9 @@ packages:
   thenify@3.3.1:
     resolution: {integrity: sha512-RVZSIV5IG10Hk3enotrhvz0T9em6cyHBLkH/YAZuKqd8hRkKhSfCGIcP2KUY0EPxndzANBmNllzWPwak+bheSw==}
 
+  three@0.185.1:
+    resolution: {integrity: sha512-5aojFCXKwnjBRZvUnt3WFfEcvUJgkN5LlijRFN95hMy8WVkG4I0QNcJE+OuWvuJ0bOdStrbfXn0pkd6/QyiAlg==}
+
   tinyglobby@0.2.17:
     resolution: {integrity: sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g==}
     engines: {node: '>=12.0.0'}
@@ -1609,6 +1615,8 @@ snapshots:
   thenify@3.3.1:
     dependencies:
       any-promise: 1.3.0
+
+  three@0.185.1: {}
 
   tinyglobby@0.2.17:
     dependencies:

@@ -105,6 +105,9 @@ class Api(Protocol):
     # -- 3D 渲染（返回 data_url / frames / gif）--
     # 相机参数（业界标准轨道相机，固定 FOV）：yaw 方位角 0-360 / pitch 俯仰角 -89..89 /
     # dist 距离倍数（相对自动适配基准，1=模型占垂直视野 76%）/ pan 屏幕平移。
+    def skeleton3d_data(self, species_id: str, *, body: dict | None = None) -> dict: ...
+    def motion3d_data(self, action_id: str, *, species: str | None = None,
+                      params: dict | None = None) -> dict: ...
     def render_skeleton3d(self, species_id: str, *, yaw: float = 0, pitch: float = 0,
                           dist: float = 1.0, pan_x: float = 0, pan_y: float = 0,
                           grid: bool = True, body: dict | None = None) -> str: ...
