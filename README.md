@@ -52,7 +52,7 @@ cd creatureforge/web && pnpm install
 ## Dev helper scripts
 
 ```bash
-./scripts/start-dev.sh     # one-command dev env (backend --dev:8765 + front-end Vite:5173, hot reload; Ctrl+C stops)
+./scripts/start-dev.sh     # one-command dev env (backend --dev:8765 + front-end Vite:5173, hot reload, LAN-accessible; Ctrl+C stops)
 ./scripts/stop-dev.sh      # stop dev processes
 ./scripts/test.sh          # full test suite (verify + CLI + E2E)
 ./scripts/build.sh         # build (front-end dist + binaries dist/)

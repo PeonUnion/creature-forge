@@ -52,7 +52,7 @@ cd creatureforge/web && pnpm install
 ## 开发辅助脚本
 
 ```bash
-./scripts/start-dev.sh     # 一键启动开发环境（后端 --dev:8765 + 前端 Vite:5173，热更新，Ctrl+C 停止）
+./scripts/start-dev.sh     # 一键启动开发环境（后端 --dev:8765 + 前端 Vite:5173，热更新，局域网可访问，Ctrl+C 停止）
 ./scripts/stop-dev.sh      # 停止开发环境进程
 ./scripts/test.sh          # 全量测试（verify + CLI + E2E）
 ./scripts/build.sh         # 构建（前端 dist + 二进制 dist/）
