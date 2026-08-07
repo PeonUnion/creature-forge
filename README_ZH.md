@@ -1,5 +1,7 @@
 # CreatureForge（中文说明）
 
+[English](README.md) | [**简体中文**](README_ZH.md)
+
 数据驱动角色素材管线：**3D 动作引擎（CMU 动捕真实数据）+ 物种/预设 + CLI/HTTP 双入口 + Web 前端预览 + Godot demo**。
 
 ## 项目内容
@@ -47,17 +49,24 @@ python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
 cd creatureforge/web && pnpm install
 ```
 
+## 开发辅助脚本
+
+```bash
+./scripts/start-dev.sh     # 一键启动开发环境（后端 --dev:8765 + 前端 Vite:5173，热更新，Ctrl+C 停止）
+./scripts/stop-dev.sh      # 停止开发环境进程
+./scripts/test.sh          # 全量测试（verify + CLI + E2E）
+./scripts/build.sh         # 构建（前端 dist + 二进制 dist/）
+```
+
 ## 测试
 
 ```bash
-# 3D 动作数据验证（8 项检查：骨长/贴地/平滑/对称/关节/肘/坐标/参数）
-.venv/bin/python scripts/verify_motions3d.py
+./scripts/test.sh          # 全量：3D 动作验证 + CLI 流程化 + 前端 E2E
 
-# CLI 流程化测试（物种/动作/预设/渲染 CRUD，数据隔离 test-data-cli/）
-.venv/bin/python scripts/test_cli.py
-
-# 前端 E2E 全量（自动起后端 --data-dir test-data + Vite，10 个用例）
-cd creatureforge/web && pnpm test:e2e
+# 或分别运行：
+.venv/bin/python scripts/verify_motions3d.py     # 3D 动作数据验证（8 项检查）
+.venv/bin/python scripts/test_cli.py            # CLI 流程化测试（数据隔离 test-data-cli/）
+cd creatureforge/web && pnpm test:e2e           # 前端 E2E 全量（10 个用例）
 ```
 
 ### 生产

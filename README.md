@@ -1,5 +1,7 @@
 # CreatureForge
 
+[**English**](README.md) | [简体中文](README_ZH.md)
+
 Data-driven character asset pipeline: **3D motion engine (real CMU MoCap data) + species/presets + CLI/HTTP dual entry + Web preview + Godot demo**.
 
 ## Highlights
@@ -47,17 +49,24 @@ python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
 cd creatureforge/web && pnpm install
 ```
 
+## Dev helper scripts
+
+```bash
+./scripts/start-dev.sh     # one-command dev env (backend --dev:8765 + front-end Vite:5173, hot reload; Ctrl+C stops)
+./scripts/stop-dev.sh      # stop dev processes
+./scripts/test.sh          # full test suite (verify + CLI + E2E)
+./scripts/build.sh         # build (front-end dist + binaries dist/)
+```
+
 ## Testing
 
 ```bash
-# 3D motion data verification (8 checks: bone/ground/smooth/sym/joint/elbow/coord/param)
-.venv/bin/python scripts/verify_motions3d.py
+./scripts/test.sh          # all: 3D motion verify + CLI workflow + front-end E2E
 
-# CLI workflow tests (species/action/preset/render CRUD, isolated test-data-cli/)
-.venv/bin/python scripts/test_cli.py
-
-# Full front-end E2E (auto-starts backend --data-dir test-data + Vite, 10 cases)
-cd creatureforge/web && pnpm test:e2e
+# or individually:
+.venv/bin/python scripts/verify_motions3d.py     # 3D motion verification (8 checks)
+.venv/bin/python scripts/test_cli.py            # CLI workflow tests (isolated test-data-cli/)
+cd creatureforge/web && pnpm test:e2e           # full front-end E2E (10 cases)
 ```
 
 ### Production
