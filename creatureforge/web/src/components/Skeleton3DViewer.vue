@@ -12,6 +12,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as THREE from 'three'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
+import { GIFEncoder, quantize, applyPalette } from 'gifenc'
 
 /**
  * WebGL 实时 3D 查看器（Three.js）。
@@ -219,6 +220,49 @@ function togglePlay() {
   }
 }
 
+/**
+ * 导出 GIF（所见即所得：当前 Three.js 视图 = 当前相机 + 地面网格 + 骨架逐帧截帧）。
+ * 返回 GIF Blob；null 表示无动画帧。
+ */
+async function exportGif({ fps, maxWidth = 640, onProgress } = {}) {
+  if (!hasFrames.value || !renderer) return null
+  const fpsNum = fps || props.fps || 6
+  const delay = Math.max(20, Math.round(1000 / fpsNum))
+  // 暂停播放避免冲突，导出后恢复
+  const wasPlaying = playing.value
+  if (wasPlaying) togglePlay()
+  try {
+    const srcW = renderer.domElement.width
+    const srcH = renderer.domElement.height
+    const scale = Math.min(1, maxWidth / (srcW || 1))
+    const w = Math.max(1, Math.round(srcW * scale))
+    const h = Math.max(1, Math.round(srcH * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w; canvas.height = h
+    const ctx = canvas.getContext('2d')
+    const gif = GIFEncoder()
+    for (let i = 0; i < props.frames.length; i++) {
+      updateSkeleton(props.frames[i])
+      renderer.render(scene, camera)
+      const img = new Image()
+      const url = renderer.domElement.toDataURL('image/png')
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url })
+      ctx.clearRect(0, 0, w, h)
+      ctx.drawImage(img, 0, 0, w, h)
+      const { data } = ctx.getImageData(0, 0, w, h)
+      const palette = quantize(data, 256)
+      const index = applyPalette(data, palette)
+      gif.writeFrame(index, w, h, { palette, delay })
+      if (onProgress) onProgress(i + 1, props.frames.length)
+      await new Promise(r => setTimeout(r, 0)) // 让 UI 保持响应
+    }
+    gif.finish()
+    return new Blob([gif.bytes()], { type: 'image/gif' })
+  } finally {
+    if (wasPlaying) togglePlay()
+  }
+}
+
 function animate() {
   rafId = requestAnimationFrame(animate)
   controls.update()
@@ -258,7 +302,7 @@ onBeforeUnmount(() => {
   }
 })
 
-defineExpose({ setView })
+defineExpose({ setView, exportGif })
 </script>
 
 <style scoped>

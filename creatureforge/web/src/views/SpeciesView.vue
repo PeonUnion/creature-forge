@@ -400,17 +400,18 @@ async function renderAction() {
   motionRenderLoading.value = false
 }
 
-/** 导出 GIF：后端按当前相机视角逐帧合成，浏览器下载 */
+/** 导出 GIF：基于当前 Three.js 视图逐帧截帧（所见即所得，含地面网格），前端 gifenc 编码 */
 async function exportMotionGif() {
-  if (!actionEditor.value?.motion_id || !selectedSpecies.value) { ElMessage.warning('请先渲染动作'); return }
+  if (!motionData.value || !motionViewer.value) { ElMessage.warning('请先渲染动作'); return }
   gifLoading.value = true
   try {
-    const qs = `species=${selectedSpecies.value.id}&` + camQS() + '&grid=0&gif=1'
-    const r = await api.renderMotion3d(actionEditor.value.motion_id, qs)
-    if (r.gif) {
-      const a = document.createElement('a'); a.href = r.gif; a.download = `${actionEditor.value.motion_id}.gif`
+    const blob = await motionViewer.value.exportGif()
+    if (blob) {
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = `${actionEditor.value.motion_id}.gif`
       document.body.appendChild(a); a.click(); a.remove()
-      ElMessage.success('GIF 已导出')
+      URL.revokeObjectURL(url)
+      ElMessage.success('GIF 已导出（当前 Three.js 视图，含网格）')
     } else ElMessage.error('GIF 生成失败')
   } catch(e) { ElMessage.error(e.message) }
   gifLoading.value = false
