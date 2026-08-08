@@ -1,0 +1,300 @@
+<template>
+  <div class="skel-view">
+    <div class="skel-head">
+      <div class="crumb">
+        <span class="crumb-root">物种</span><span class="crumb-sep">/</span>
+        <span class="crumb-now">{{ wiz?.title || speciesId }}</span>
+      </div>
+      <div class="head-actions">
+        <el-button size="small" @click="emit('back')">返回列表</el-button>
+        <el-button size="small" type="primary" @click="save" :loading="saving" icon="Check">保存骨骼</el-button>
+      </div>
+    </div>
+
+    <!-- 普通 / 高级 双页签，共享同一份草稿 draft -->
+    <el-tabs v-model="mode" class="mode-tabs">
+      <el-tab-pane label="🧩 普通（语义化）" name="normal" />
+      <el-tab-pane label="⚙️ 高级 JSON" name="advanced" />
+    </el-tabs>
+
+    <!-- 普通模式：骨架 / 姿态 / 参数 -->
+    <div v-if="mode === 'normal'" class="normal-body">
+      <el-tabs v-model="sub">
+        <el-tab-pane label="🦴 骨架结构" name="skeleton">
+          <p class="hint">第一个关节即「根」；可「一键镜像」对称肢（wing_l → wing_r）。</p>
+          <div class="wiz-layout">
+            <div class="wiz-preview">
+              <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
+                :head-radius="12.5" :center="[480, 300, 0]" />
+              <div v-else class="preview-empty"><p>添加关节后实时显示骨架</p></div>
+            </div>
+            <div class="wiz-controls">
+              <div class="sec">
+                <div class="sec-t">新增关节</div>
+                <el-input v-model="nj.name" size="small" placeholder="关节名，如 head / wing_l" />
+                <el-select v-model="nj.parent" size="small" placeholder="父关节（空 = 根）" clearable filterable style="width: 100%">
+                  <el-option v-for="n in jointNames" :key="n" :label="n" :value="n" />
+                </el-select>
+                <el-input v-model="nj.posStr" size="small" placeholder="坐标 x,y,z（可留空 = 0,0,0）" />
+                <el-button size="small" type="primary" @click="addJoint" icon="Plus">加关节</el-button>
+              </div>
+              <div class="sec">
+                <div class="sec-t">关节列表（{{ jointNames.length }}）</div>
+                <div class="joint-list">
+                  <div v-for="n in jointNames" :key="n" class="joint-row">
+                    <span class="mono">{{ n }}</span>
+                    <span class="parent">{{ nodes[n]?.parent ? '← ' + nodes[n].parent : '根' }}</span>
+                    <el-button size="small" text type="primary" @click="mirrorJoint(n)">镜像</el-button>
+                    <el-button size="small" text type="danger" @click="rmJoint(n)">删</el-button>
+                  </div>
+                </div>
+              </div>
+              <div class="sec">
+                <div class="sec-t">命名链（spine / tail / arm…）</div>
+                <el-input v-model="chainName" size="small" placeholder="链名，如 spine" />
+                <el-input v-model="chainJoints" size="small" placeholder="关节（逗号分隔），如 head,neck,chest" />
+                <el-button size="small" type="primary" @click="addChain" icon="Link">建链</el-button>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="🧍 默认姿态" name="pose">
+          <div class="wiz-layout">
+            <div class="wiz-preview">
+              <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
+                :head-radius="12.5" :center="[480, 300, 0]" />
+              <div v-else class="preview-empty"><p>骨架预览</p></div>
+            </div>
+            <div class="wiz-controls">
+              <div class="sec">
+                <div class="sec-t">关节坐标</div>
+                <el-select v-model="poseJoint" size="small" placeholder="选关节" filterable style="width: 100%">
+                  <el-option v-for="n in jointNames" :key="n" :label="n" :value="n" />
+                </el-select>
+                <el-input v-model="poseStr" size="small" :placeholder="posePlaceholder" />
+                <el-button size="small" type="primary" @click="setPose">设坐标</el-button>
+              </div>
+              <div class="sec">
+                <div class="sec-t">画布 / 地面</div>
+                <div class="row3">
+                  <el-input-number v-model="canvas.width" size="small" :step="50" />
+                  <el-input-number v-model="canvas.height" size="small" :step="50" />
+                  <el-input-number v-model="canvas.floor_y" size="small" :step="10" />
+                </div>
+                <el-button size="small" type="primary" @click="setCanvas">保存画布</el-button>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="📐 体型参数" name="params">
+          <div class="wiz-layout">
+            <div class="wiz-controls full">
+              <div class="sec">
+                <div class="sec-t">新增体型参数（可调部位）</div>
+                <el-input v-model="pcName" size="small" placeholder="参数名，如 head_scale" />
+                <el-input v-model="pcJoints" size="small" placeholder="关节（逗号分隔），如 head" />
+                <el-input v-model="pcLabel" size="small" placeholder="中文名，如 头大小（可空）" />
+                <el-button size="small" type="primary" @click="addParam" icon="Plus">加参数</el-button>
+              </div>
+              <div class="sec">
+                <div class="sec-t">已定义体型参数（{{ Object.keys(paramChains).length }}）</div>
+                <div class="joint-list">
+                  <div v-for="(pc, name) in paramChains" :key="name" class="joint-row">
+                    <span class="mono">{{ pc.param || name }}</span><span class="parent">{{ pc.label }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </div>
+
+    <!-- 高级模式：JSON 直接编辑（与普通模式共享 draft） -->
+    <div v-else class="advanced-body">
+      <p class="hint">直接编辑骨骼产物 JSON（skeleton.json / default.json）。点「应用 JSON」同步到普通模式；普通模式改动也会在此刷新。</p>
+      <div class="json-grid">
+        <div class="json-box">
+          <div class="json-head">skeleton.json</div>
+          <el-input v-model="skeletonJson" type="textarea" :rows="22" class="mono json-editor" spellcheck="false" />
+        </div>
+        <div class="json-box">
+          <div class="json-head">default.json</div>
+          <el-input v-model="defaultJson" type="textarea" :rows="22" class="mono json-editor" spellcheck="false" />
+        </div>
+      </div>
+      <div class="json-actions">
+        <el-button size="small" @click="loadFiles">重新加载</el-button>
+        <el-button size="small" type="primary" @click="applyFiles">应用 JSON 到普通模式</el-button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { api } from '../api.js'
+import Skeleton3DViewer from '../components/Skeleton3DViewer.vue'
+
+const props = defineProps({ speciesId: { type: String, required: true } })
+const emit = defineEmits(['back', 'saved'])
+
+const mode = ref('normal')  // normal | advanced
+const sub = ref('skeleton') // skeleton | pose | params
+const saving = ref(false)
+const wiz = ref(null)
+
+const nodes = computed(() => wiz.value?.nodes || {})
+const chains = computed(() => wiz.value?.chains || {})
+const paramChains = computed(() => wiz.value?.param_chains || {})
+const pos3d = computed(() => wiz.value?.positions_3d || {})
+const jointNames = computed(() => Object.keys(nodes.value))
+
+const preview = computed(() => {
+  const joints = {}
+  const bones = []
+  for (const [name, nd] of Object.entries(nodes.value)) {
+    joints[name] = pos3d.value[name] || [0, 0, 0]
+    if (nd.parent) bones.push([nd.parent, name])
+  }
+  return { joints, bones }
+})
+
+const nj = ref({ name: '', parent: null, posStr: '' })
+const chainName = ref('')
+const chainJoints = ref('')
+const poseJoint = ref('')
+const poseStr = ref('')
+const posePlaceholder = computed(() =>
+  poseJoint.value && pos3d.value[poseJoint.value]
+    ? `当前 ${pos3d.value[poseJoint.value].join(',')}（输入 x,y,z）`
+    : 'x,y,z（如 480,300,0）')
+const canvas = ref({ width: 960, height: 600, floor_y: 470 })
+const pcName = ref('')
+const pcJoints = ref('')
+const pcLabel = ref('')
+
+// 高级 JSON
+const skeletonJson = ref('')
+const defaultJson = ref('')
+
+async function refresh() {
+  wiz.value = await api.wizardGet(props.speciesId)
+  canvas.value = { ...(wiz.value?.canvas || { width: 960, height: 600, floor_y: 470 }) }
+}
+
+async function loadFiles() {
+  try {
+    const r = await api.wizardFiles(props.speciesId)
+    skeletonJson.value = JSON.stringify(r.skeleton, null, 2)
+    defaultJson.value = JSON.stringify(r.default, null, 2)
+  } catch (e) { ElMessage.error(e.message) }
+}
+
+async function applyFiles() {
+  let sk, df
+  try { sk = JSON.parse(skeletonJson.value) } catch (e) { ElMessage.error('skeleton JSON 语法错误: ' + e.message); return }
+  try { df = JSON.parse(defaultJson.value) } catch (e) { ElMessage.error('default JSON 语法错误: ' + e.message); return }
+  try {
+    await api.wizardSaveFiles(props.speciesId, sk, df)
+    ElMessage.success('已应用 JSON，普通模式已同步')
+    await refresh()
+  } catch (e) { ElMessage.error(e.message) }
+}
+
+watch(mode, (m) => { if (m === 'advanced') loadFiles() })
+
+onMounted(async () => { await refresh() })
+
+// -- 骨架结构 --
+async function addJoint() {
+  const name = nj.value.name.trim()
+  if (!name) { ElMessage.warning('请输入关节名'); return }
+  const pos = nj.value.posStr.trim() ? nj.value.posStr.split(',').map(Number) : null
+  try {
+    await api.wizardJointAdd(props.speciesId, { name, parent: nj.value.parent, pos })
+    nj.value.name = ''; nj.value.posStr = ''
+    await refresh()
+  } catch (e) { ElMessage.error(e.message) }
+}
+async function rmJoint(name) {
+  try {
+    await ElMessageBox.confirm(`删除关节「${name}」及其后代？`, '确认', { type: 'warning' })
+    await api.wizardJointRm(props.speciesId, name)
+    await refresh()
+  } catch (e) { if (e !== 'cancel') ElMessage.error(e.message || e) }
+}
+async function mirrorJoint(name) {
+  try { await api.wizardMirror(props.speciesId, name); await refresh() }
+  catch (e) { ElMessage.error(e.message) }
+}
+async function addChain() {
+  const name = chainName.value.trim()
+  const joints = chainJoints.value.split(',').map(s => s.trim()).filter(Boolean)
+  if (!name || !joints.length) { ElMessage.warning('请填链名和关节'); return }
+  try { await api.wizardChainAdd(props.speciesId, name, joints); chainName.value = ''; chainJoints.value = ''; await refresh() }
+  catch (e) { ElMessage.error(e.message) }
+}
+// -- 姿态 --
+async function setPose() {
+  if (!poseJoint.value) { ElMessage.warning('先选关节'); return }
+  const pos = poseStr.value.split(',').map(Number)
+  if (pos.length !== 3 || pos.some(isNaN)) { ElMessage.warning('坐标格式：x,y,z'); return }
+  try { await api.wizardPoseSet(props.speciesId, poseJoint.value, pos); await refresh() }
+  catch (e) { ElMessage.error(e.message) }
+}
+async function setCanvas() {
+  try { await api.wizardCanvas(props.speciesId, { ...canvas.value }); ElMessage.success('画布已保存') }
+  catch (e) { ElMessage.error(e.message) }
+}
+// -- 参数 --
+async function addParam() {
+  const name = pcName.value.trim()
+  const joints = pcJoints.value.split(',').map(s => s.trim()).filter(Boolean)
+  if (!name || !joints.length) { ElMessage.warning('请填参数名和关节'); return }
+  try {
+    await api.wizardParamAdd(props.speciesId, name, joints, { label: pcLabel.value || null })
+    pcName.value = ''; pcJoints.value = ''; pcLabel.value = ''
+    await refresh()
+  } catch (e) { ElMessage.error(e.message) }
+}
+
+async function save() {
+  saving.value = true
+  try {
+    await api.wizardCommit(props.speciesId)
+    ElMessage.success('骨骼已保存')
+    emit('saved')
+  } catch (e) { ElMessage.error('保存失败: ' + e.message) }
+  saving.value = false
+}
+</script>
+
+<style scoped>
+.skel-view { padding: 4px 0; }
+.skel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.crumb { font-size: .9rem; }
+.crumb-root { color: #909399; } .crumb-sep { color: #c0c4cc; } .crumb-now { font-weight: 600; }
+.mode-tabs { margin-bottom: 8px; }
+.hint { color: #909399; font-size: .82rem; margin: 0 0 12px; }
+.wiz-layout { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+.wiz-layout .full { grid-column: 1 / -1; }
+.wiz-preview { border-radius: 8px; overflow: hidden; border: 1px solid #111827; min-height: 320px; }
+.wiz-controls { display: flex; flex-direction: column; gap: 14px; }
+.sec { border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 12px; background: #fafbfc; display: flex; flex-direction: column; gap: 8px; }
+.sec-t { font-size: .78rem; font-weight: 600; color: #606266; }
+.joint-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.joint-row { display: flex; align-items: center; gap: 8px; font-size: .8rem; padding: 2px 4px; border-radius: 4px; }
+.joint-row:hover { background: #f0f2f5; }
+.mono { font-family: monospace; }
+.parent { color: #909399; font-size: .72rem; flex: 1; }
+.row3 { display: flex; gap: 6px; }
+.preview-empty { border: 1px dashed #d9d9d9; border-radius: 8px; min-height: 300px; display: flex; align-items: center; justify-content: center; color: #c0c4cc; }
+.json-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.json-box { border: 1px solid #ebeef5; border-radius: 8px; }
+.json-head { padding: 6px 10px; font-size: .78rem; font-weight: 600; border-bottom: 1px solid #ebeef5; background: #fafbfc; border-radius: 8px 8px 0 0; }
+.json-actions { margin-top: 10px; display: flex; gap: 8px; }
+</style>

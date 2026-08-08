@@ -207,6 +207,13 @@ class ApiService:
     def wizard_discard(self, species_id: str) -> str:
         return self.wizard.discard(species_id)
 
+    # 高级 JSON 模式（与普通模式共享同一份草稿）
+    def wizard_files(self, species_id: str) -> dict:
+        return self.wizard.files(species_id)
+
+    def wizard_save_files(self, species_id: str, skeleton: dict, default: dict | None = None) -> dict:
+        return self.wizard.save_files(species_id, skeleton, default)
+
     def _load_part_mesh(self, skin: dict, part: dict) -> dict | None:
         """加载部件网格（内嵌 mesh 或外部 mesh_file 解析）。"""
         if part.get("mesh"):

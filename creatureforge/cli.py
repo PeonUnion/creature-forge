@@ -120,6 +120,8 @@ def cmd_species(args) -> None:
             print(f"  {t['morph_id']:12s} {t['title']:18s} 关节{t['joint_count']:3d} 链{t['chain_count']:3d} 动作{len(t['actions'])} — {t['description'][:44]}")
     elif args.sub == "wizard":
         cmd_wizard(svc, args.species)
+    elif args.sub == "edit":
+        cmd_edit(svc, args.species)
     elif args.sub == "wizard-init":
         _json(svc.wizard_init(args.species, morph_id=args.template, title=args.title, description=args.desc))
     elif args.sub == "joint-add":
@@ -198,6 +200,40 @@ def cmd_wizard(svc, species_id: str) -> None:
         svc.wizard_commit(species_id)
         print(f"✓ 物种 {species_id} 已创建（骨架 + 默认姿态 + 预设 schema）")
         print(f"  下一步：creatureforge action wizard --species {species_id}")
+    except Exception as e:
+        print(f"✗ 提交失败: {e}")
+
+
+def cmd_edit(svc, species_id: str) -> None:
+    """交互式语义化编辑已有物种（加载草稿 → 骨架操作 → commit 覆盖，非 JSON）。"""
+    print(f"== CreatureForge 物种编辑：{species_id} ==")
+    try:
+        v = svc.wizard_get(species_id)  # 自动加载已有物种为草稿（无草稿则从 skeleton 加载）
+    except Exception as e:
+        print(f"✗ {e}")
+        return
+    print(f"✓ 已加载：{v['title']}（关节{v['joint_count']} 骨{v['bone_count']} 链{v['chain_count']} 参数{v['param_chain_count']}）")
+    print("  指令：joint add/rm/rename/parent · mirror · chain add/rm · pose · param · list · done(提交) · quit(放弃)")
+    while True:
+        try:
+            line = input("编辑> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if not line:
+            continue
+        if line in ("done", "commit", "next"):
+            break
+        if line in ("quit", "exit"):
+            print("已放弃（草稿保留，可再编辑）")
+            return
+        try:
+            _wizard_cmd(svc, species_id, line)
+        except Exception as e:
+            print(f"✗ {e}")
+    try:
+        svc.wizard_commit(species_id)
+        print(f"✓ 物种 {species_id} 已更新")
     except Exception as e:
         print(f"✗ 提交失败: {e}")
 
@@ -405,6 +441,8 @@ def build_parser() -> argparse.ArgumentParser:
     ssp.add_parser("templates", help="列形态模板（可选起步，含从 0 开始）")
     wiz = ssp.add_parser("wizard", help="交互式分步向导（建物种）")
     wiz.add_argument("species", help="新物种 id")
+    ed = ssp.add_parser("edit", help="交互式语义化编辑已有物种（非 JSON）")
+    ed.add_argument("species")
     s1 = ssp.add_parser("show"); s1.add_argument("id")
     s1 = ssp.add_parser("schema"); s1.add_argument("id", help="预设 schema")
     s1 = ssp.add_parser("default"); s1.add_argument("id")

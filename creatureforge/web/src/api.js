@@ -136,6 +136,13 @@ export const api = {
   /** 放弃草稿 */
   wizardDiscard: (id) => raw(`/api/wizard/${encodeURIComponent(id)}/discard`, json({})),
 
+  /** 草稿派生文件（skeleton/default），高级 JSON 模式查看 */
+  wizardFiles: (id) => raw(`/api/wizard/${encodeURIComponent(id)}/files`),
+
+  /** 高级 JSON 模式保存（重建草稿，普通模式同步） */
+  wizardSaveFiles: (id, skeleton, defaultData) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/files`, json({ skeleton, default: defaultData })),
+
   // -- 3D 预览（3D 坐标 + 投影；基于物种默认参数） --
 
   /** 3D 骨架：任意角度(yaw/pitch) + 距离(透视) 渲染 PNG（species_id 路径） */

@@ -570,14 +570,20 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         return self._json({"templates": self.api.templates_list()})
 
     def _wizard_get(self) -> None:
-        """GET /api/wizard/<species_id> — 向导草稿视图。"""
+        """GET /api/wizard/<species_id> — 草稿视图; /files — 派生 skeleton/default（高级 JSON）。"""
         from urllib.parse import urlparse
         parts = _path_parts(urlparse(self.path).path, "/api/wizard")
-        if len(parts) == 1:
-            try:
-                return self._json(self.api.wizard_get(parts[0]))
-            except KeyError as e:
-                return self._json({"ok": False, "error": str(e)}, 404)
+        if len(parts) >= 1:
+            if len(parts) == 2 and parts[1] == "files":
+                try:
+                    return self._json(self.api.wizard_files(parts[0]))
+                except KeyError as e:
+                    return self._json({"ok": False, "error": str(e)}, 404)
+            if len(parts) == 1:
+                try:
+                    return self._json(self.api.wizard_get(parts[0]))
+                except KeyError as e:
+                    return self._json({"ok": False, "error": str(e)}, 404)
         self.send_error(404)
 
     def _wizard_post(self) -> None:
@@ -626,6 +632,9 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
                 return self._json({"ok": True, "created": self.api.wizard_commit(sp)})
             if act == ["discard"]:
                 return self._json({"ok": True, "discarded": self.api.wizard_discard(sp)})
+            if act == ["files"]:
+                return self._json(self.api.wizard_save_files(
+                    sp, body.get("skeleton") or {}, body.get("default")))
         except (ValueError, KeyError, FileExistsError) as e:
             return self._json({"ok": False, "error": str(e)}, 400)
         return self._json({"ok": False, "error": f"unknown wizard action: {'/'.join(act)}"}, 404)

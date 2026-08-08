@@ -28,7 +28,11 @@
     "tail1": "tail1",
     "tail2": "tail2",
     "tail3": "tail3",
-    "tail_tip": "tail_tip"
+    "tail_tip": "tail_tip",
+    "dorsal1": "dorsal1",
+    "dorsal2": "dorsal2",
+    "dorsal3": "dorsal3",
+    "pearl": "pearl"
   },
   "chains": {
     "spine": [
@@ -56,6 +60,12 @@
     "hindleg_left": [
       "back_leg_l",
       "back_paw_l"
+    ],
+    "dorsal": [
+      "dorsal3",
+      "dorsal2",
+      "dorsal1",
+      "body_front"
     ]
   },
   "param_chains": {
@@ -188,6 +198,22 @@
     [
       "tail3",
       "tail_tip"
+    ],
+    [
+      "body_front",
+      "dorsal1"
+    ],
+    [
+      "body_mid",
+      "dorsal2"
+    ],
+    [
+      "body_rear",
+      "dorsal3"
+    ],
+    [
+      "head",
+      "pearl"
     ]
   ],
   "fk_tree": {
@@ -215,7 +241,11 @@
     "tail1": "body_rear",
     "tail2": "tail1",
     "tail3": "tail2",
-    "tail_tip": "tail3"
+    "tail_tip": "tail3",
+    "dorsal1": "body_front",
+    "dorsal2": "body_mid",
+    "dorsal3": "body_rear",
+    "pearl": "head"
   },
   "constraints": {
     "schema": "creatureforge_constraints_v1",
@@ -283,6 +313,12 @@
         [
           "back_leg_l",
           "back_paw_l"
+        ],
+        [
+          "dorsal3",
+          "dorsal2",
+          "dorsal1",
+          "body_front"
         ]
       ]
     }

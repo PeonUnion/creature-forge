@@ -132,9 +132,10 @@
 
     <div class="wiz-actions">
       <el-button @click="cancel">取消</el-button>
-      <el-button v-if="step > 0" @click="step--">上一步</el-button>
+      <el-button v-if="isEdit" @click="emit('switch-json')">高级 JSON</el-button>
+      <el-button v-if="step > (isEdit ? 2 : 0)" @click="step--">上一步</el-button>
       <el-button v-if="step < 4" type="primary" @click="next">下一步</el-button>
-      <el-button v-if="step === 4" type="primary" @click="finish" :loading="committing">完成并创建</el-button>
+      <el-button v-if="step === 4" type="primary" @click="finish" :loading="committing">{{ isEdit ? '保存修改' : '完成并创建' }}</el-button>
     </div>
   </div>
 </template>
@@ -145,7 +146,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api.js'
 import Skeleton3DViewer from '../components/Skeleton3DViewer.vue'
 
-const emit = defineEmits(['done', 'cancel'])
+const emit = defineEmits(['done', 'cancel', 'switch-json'])
+
+// 编辑模式：existingId 非空时加载已有物种进行语义化编辑（非 JSON）
+const props = defineProps({ existingId: { type: String, default: '' } })
+const isEdit = computed(() => !!props.existingId)
 
 const step = ref(0)
 const templateList = ref([])
@@ -194,6 +199,18 @@ onMounted(async () => {
     const r = await api.templates()
     templateList.value = r.templates || []
   } catch (e) { ElMessage.error('加载模板失败: ' + e.message) }
+  // 编辑模式：加载已有物种 → 直接进入骨架结构步骤
+  if (props.existingId) {
+    try {
+      const v = await api.wizardGet(props.existingId)
+      wiz.value = v
+      form.value.species_id = props.existingId
+      form.value.title = v.title || ''
+      form.value.description = v.description || ''
+      canvas.value = { ...(v.canvas || { width: 960, height: 600, floor_y: 470 }) }
+      step.value = 2
+    } catch (e) { ElMessage.error('加载物种失败: ' + e.message) }
+  }
 })
 
 function next() {

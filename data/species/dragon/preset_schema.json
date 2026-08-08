@@ -36,7 +36,11 @@
     "tail1",
     "tail2",
     "tail3",
-    "tail_tip"
+    "tail_tip",
+    "dorsal1",
+    "dorsal2",
+    "dorsal3",
+    "pearl"
   ],
   "params": {
     "body_length": {

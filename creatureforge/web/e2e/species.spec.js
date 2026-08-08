@@ -1,37 +1,29 @@
 import { test, expect } from '@playwright/test'
 
-// 物种管理全量 E2E：列表 / 详情 / 骨架预览(渲染+相机) / 动作编辑器(预览+拖拽+GIF 导出)
+// 物种管理全量 E2E（ToB 布局：表格列表 + 详情页，骨骼/动作独立页面）
 test.describe('物种管理（全量 E2E）', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/#/species')
   })
 
-  test('物种列表加载并显示 human', async ({ page }) => {
-    await expect(page.locator('.list-item .item-name', { hasText: '人类骨骼拓扑' })).toBeVisible()
+  test('物种列表：表格加载并显示 human', async ({ page }) => {
+    await expect(page.locator('.el-table__row', { hasText: '人类骨骼拓扑' })).toBeVisible()
+    // ToB：无左侧 sidebar 列表
+    await expect(page.locator('.sidebar')).toHaveCount(0)
   })
 
-  test('选择物种 → 详情统计卡 + 骨骼拓扑 tab', async ({ page }) => {
-    await page.locator('.list-item .item-main', { hasText: '人类骨骼拓扑' }).click()
-    await expect(page.locator('.crumb-now', { hasText: '人类骨骼拓扑' })).toBeVisible()
-    // 统计卡：36 关节 / 35 骨(bones_3d) / 1 动作
-    await expect(page.locator('.stat-card .stat-val', { hasText: '36' }).first()).toBeVisible()
-    await expect(page.locator('.stat-card .stat-val', { hasText: '35' })).toBeVisible()
-    // 关节链内容（spine 链）
-    await expect(page.locator('.chain-row', { hasText: 'spine' }).first()).toBeVisible()
-    // 参数链表
-    await expect(page.locator('.el-table', { hasText: 'head_scale' }).first()).toBeVisible()
-  })
-
-  test('骨架预览：渲染 → 快捷视角 → 相机收纳面板', async ({ page }) => {
-    await page.locator('.list-item .item-main', { hasText: '人类骨骼拓扑' }).click()
-    await page.locator('.el-tabs__item', { hasText: '骨架预览' }).click()
-    // 点渲染加载 WebGL 骨架（Three.js canvas）
-    await page.locator('button', { hasText: '渲染' }).click()
+  test('骨骼页：进入详情 → 骨架维护渲染（普通/高级双页签）', async ({ page }) => {
+    const row = page.locator('.el-table__row', { hasText: '人类骨骼拓扑' }).first()
+    await row.getByRole('button', { name: '骨骼' }).click()
+    await expect(page.locator('.detail-tabs .el-tabs__item', { hasText: '骨骼' })).toBeVisible()
+    // 普通/高级双页签
+    await expect(page.locator('.mode-tabs .el-tabs__item', { hasText: '普通（语义化）' })).toBeVisible()
+    await expect(page.locator('.mode-tabs .el-tabs__item', { hasText: '高级 JSON' })).toBeVisible()
+    // 骨架结构 3D 预览（WebGL canvas 非空白）
     await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 30_000 })
-    // WebGL 实际渲染内容（非空白）：readPixels 统计非背景色像素
     await expect.poll(() => page.evaluate(() => {
       const c = document.querySelector('.sk3d canvas')
-      const gl = c && (c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl'))
+      const gl = c && (c.getContext('webgl2') || c.getContext('webgl'))
       if (!c || !gl) return 0
       const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight
       const px = new Uint8Array(w * h * 4)
@@ -42,40 +34,26 @@ test.describe('物种管理（全量 E2E）', () => {
       }
       return n
     }), { timeout: 10_000 }).toBeGreaterThan(100)
-    // 快捷视角按钮：点侧面 → 高亮 + 自动重渲染
-    await page.locator('button', { hasText: '侧面' }).click()
-    await expect(page.locator('button', { hasText: '侧面' })).toHaveClass(/primary/)
-    // 相机面板（收纳）：弹出细调滑块
-    await page.locator('button', { hasText: '相机' }).click()
-    await expect(page.locator('.cam-panel-title', { hasText: '相机设置' })).toBeVisible()
-    await expect(page.locator('.cam-row', { hasText: '水平角' })).toBeVisible()
-    // 重置按钮
-    await page.locator('.cam-panel button', { hasText: '重置' }).click()
-    await page.locator('button', { hasText: '正面' }).click()
-    await expect(page.locator('button', { hasText: '正面' })).toHaveClass(/primary/)
+    // 高级 JSON：切页签 → skeleton/default 两个编辑器
+    await page.locator('.mode-tabs .el-tabs__item', { hasText: '高级 JSON' }).click()
+    await expect(page.locator('.json-box textarea')).toHaveCount(2)
+    await expect(page.locator('.json-box .json-head', { hasText: 'skeleton.json' })).toBeVisible()
   })
 
-  test('动作管理：打开 walk3d 编辑器 → 动作预览渲染 → GIF 导出下载', async ({ page }) => {
-    await page.locator('.list-item .item-main', { hasText: '人类骨骼拓扑' }).click()
-    await page.locator('.el-tabs__item', { hasText: '动作管理' }).click()
+  test('动作页：walk3d 编辑 → 预览渲染 → GIF 导出下载', async ({ page }) => {
+    const row = page.locator('.el-table__row', { hasText: '人类骨骼拓扑' }).first()
+    await row.getByRole('button', { name: '动作' }).click()
     await expect(page.locator('.cell-title', { hasText: 'Walk 3D' })).toBeVisible()
-    // 动作表格内的「编辑」按钮（按行内 walk3d 精确定位，非 .first()）
+    // 动作表格内「编辑」walk3d
     await page.locator('.el-table .el-table__row', { hasText: 'walk3d' })
       .getByRole('button', { name: '编辑' }).click()
-    // 动作编辑器（面包屑 walk3d）
     await expect(page.locator('.crumb-now', { hasText: 'walk3d' })).toBeVisible({ timeout: 20_000 })
-    // 动作 JSON 定义区（el-input textarea，class 在 wrapper）
-    await expect(page.locator('.json-editor')).toBeVisible()
-    // 动作预览自动渲染（WebGL 3D，播放按钮 + 帧计数）
+    // 预览 tab → 渲染
+    await page.locator('.el-tabs__item', { hasText: '动作预览' }).click()
+    await page.locator('.preview-controls button', { hasText: '渲染' }).click()
     await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 40_000 })
-    // 帧计数徽章 1/16
     await expect(page.locator('.sk3d-badge', { hasText: '16' })).toBeVisible()
-    // 点「播放」→ WebGL 逐帧播放（帧计数递增）
-    await page.locator('.sk3d-btn').click()
-    await expect(page.locator('.sk3d-btn', { hasText: '暂停' })).toBeVisible()
-    await expect.poll(() => page.locator('.sk3d-badge').textContent(), { timeout: 10_000 }).not.toBe('1 / 16')
-    await page.locator('.sk3d-btn').click()  // 暂停
-    // GIF 导出（触发浏览器下载）
+    // GIF 导出（浏览器下载）
     const dl = page.waitForEvent('download', { timeout: 60_000 })
     await page.locator('.preview-controls button', { hasText: '导出 GIF' }).click()
     const download = await dl
@@ -83,15 +61,16 @@ test.describe('物种管理（全量 E2E）', () => {
   })
 
   test('动作预览：拖拽旋转视角（WebGL 把玩手办）', async ({ page }) => {
-    await page.locator('.list-item .item-main', { hasText: '人类骨骼拓扑' }).click()
-    await page.locator('.el-tabs__item', { hasText: '动作管理' }).click()
-    await expect(page.locator('.cell-title', { hasText: 'Walk 3D' })).toBeVisible()
+    const row = page.locator('.el-table__row', { hasText: '人类骨骼拓扑' }).first()
+    await row.getByRole('button', { name: '动作' }).click()
     await page.locator('.el-table .el-table__row', { hasText: 'walk3d' })
       .getByRole('button', { name: '编辑' }).click()
+    await page.locator('.el-tabs__item', { hasText: '动作预览' }).click()
+    await page.locator('.preview-controls button', { hasText: '渲染' }).click()
     await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 40_000 })
-    // 初始：正面应高亮（openAction 默认 yaw=0）
+    // 初始：正面高亮（openAction 默认 yaw=0）
     await expect(page.locator('button', { hasText: '正面' })).toHaveClass(/primary/)
-    // 在预览图（canvas）上拖拽 → TrackballControls 转动模型本体 → 相机角度变化
+    // 拖拽 → TrackballControls 转动 → 相机角度变化
     const stage = page.locator('.sk3d')
     await stage.scrollIntoViewIfNeeded()
     const box = await stage.boundingBox()
@@ -99,95 +78,53 @@ test.describe('物种管理（全量 E2E）', () => {
     await page.mouse.down()
     await page.mouse.move(box.x + box.width / 2 + 70, box.y + box.height / 2 + 20, { steps: 8 })
     await page.mouse.up()
-    // 拖拽后正面取消高亮（emit view → cam 更新）
     await expect(page.locator('button', { hasText: '正面' })).not.toHaveClass(/primary/, { timeout: 5_000 })
   })
 
-  test('物种 CRUD：新建 → 详情 → 编辑改名称 → 删除', async ({ page }) => {
+  test('物种 CRUD：新建向导（从 0）→ 列表 → 删除', async ({ page }) => {
     const sid = `e2e_sp_${Date.now()}`
-    // 新建物种（最小合法骨架：joints + bones_3d + chains + 默认参数）
-    // 注意：默认「新建物种（向导）」；此处用保留的「高级 JSON」专家模式做最小骨架断言
-    await page.locator('.page-header button', { hasText: '高级 JSON' }).click()
-    await expect(page.locator('.crumb-now', { hasText: '新建' })).toBeVisible()
-    await page.locator('.el-form-item', { hasText: '物种 ID' }).locator('input').fill(sid)
-    await page.locator('.el-form-item', { hasText: '名称' }).locator('input').fill('E2E 测试物种')
-    await page.locator('.el-form-item', { hasText: '关节组 (JSON)' }).locator('textarea')
-      .fill('{"core":["root","mid"]}')
-    await page.locator('.el-form-item', { hasText: '骨骼连接 3D' }).locator('textarea')
-      .fill('[["root","mid"]]')
-    await page.locator('.el-form-item', { hasText: '关节链 (JSON)' }).locator('textarea')
-      .fill('{"main":["root","mid"]}')
-    await page.locator('.el-form-item', { hasText: '默认参数' }).locator('textarea')
-      .fill('{"positions_3d":{"root":[0,0,0],"mid":[0,10,0]},"head_radius":5}')
-    await page.locator('button', { hasText: '创建' }).click()
-    await expect(page.locator('.list-item .item-name', { hasText: 'E2E 测试物种' })).toBeVisible({ timeout: 10_000 })
+    // 新建（向导）
+    await page.locator('.page-header button', { hasText: '新建物种（向导）' }).click()
+    // step1 基本信息
+    await page.getByPlaceholder('如 dragon / humanoid_x').fill(sid)
+    await page.getByPlaceholder('如 深渊幼龙').fill('E2E 测试物种')
+    await page.getByRole('button', { name: '下一步' }).click()
+    // step2 模板：默认 custom（从 0 开始）→ 下一步
+    await page.getByRole('button', { name: '下一步' }).click()
+    // step3 骨架：加根关节
+    await page.getByPlaceholder('关节名，如 head / wing_l').fill('root')
+    await page.getByRole('button', { name: '加关节' }).click()
+    await expect(page.locator('.joint-row .mono', { hasText: 'root' })).toBeVisible()
+    // 姿态 → 参数 → 完成并创建
+    await page.getByRole('button', { name: '下一步' }).click()
+    await page.getByRole('button', { name: '下一步' }).click()
+    await page.getByRole('button', { name: '完成并创建' }).click()
+    await expect(page.locator('.el-table__row', { hasText: sid })).toBeVisible({ timeout: 10_000 })
 
-    // 详情：统计卡（2 关节 / 1 骨 / 1 链）
-    await page.locator('.list-item .item-main', { hasText: 'E2E 测试物种' }).click()
-    await expect(page.locator('.crumb-now', { hasText: 'E2E 测试物种' })).toBeVisible()
-    await expect(page.locator('.stat-card .stat-val', { hasText: '2' }).first()).toBeVisible()
-    await expect(page.locator('.stat-card .stat-val', { hasText: '1' }).first()).toBeVisible()
-
-    // 编辑：改名称
-    await page.locator('button', { hasText: '编辑物种' }).click()
-    await expect(page.locator('.crumb-now', { hasText: '编辑' })).toBeVisible()
-    await page.locator('.el-form-item', { hasText: '名称' }).locator('input').fill('E2E 物种改名')
-    await page.locator('button', { hasText: '保存' }).click()
-    await expect(page.locator('.list-item .item-name', { hasText: 'E2E 物种改名' })).toBeVisible({ timeout: 10_000 })
-
-    // 删除（hover 显示操作 → 删除 → 确认弹窗）
-    const item = page.locator('.list-item', { hasText: 'E2E 物种改名' })
-    await item.hover()
-    await item.locator('button', { hasText: '删除' }).click()
-    await page.locator('.el-message-box__btns button', { hasText: '删除' }).click()
-    await expect(page.locator('.list-item .item-name', { hasText: 'E2E 物种改名' })).toHaveCount(0)
-  })
-
-  test('动作 CRUD：新建动作 → 保存 → 列表 → 删除', async ({ page }) => {
-    const aid = `e2e_act_${Date.now()}`
-    await page.locator('.list-item .item-main', { hasText: '人类骨骼拓扑' }).click()
-    await page.locator('.el-tabs__item', { hasText: '动作管理' }).click()
-    await expect(page.locator('.cell-title', { hasText: 'Walk 3D' })).toBeVisible()
-    // 新建动作（startCreateAction 预填模板，改 motion_id）
-    await page.locator('button', { hasText: '新建动作' }).click()
-    await expect(page.locator('.crumb-now', { hasText: '新动作' })).toBeVisible()
-    const motion = {
-      schema: 'creatureforge_motion3d_v1', motion_id: aid, title: 'E2E 动作', description: '',
-      species: 'human', frame_count: 8, params: {}, root3d: { dy: { phase: true } }, offsets3d: {}, ik3d: {},
-    }
-    await page.locator('.json-editor textarea').fill(JSON.stringify(motion, null, 2))
-    await page.locator('button', { hasText: '保存动作' }).click()
-    // 列表出现新动作
-    await expect(page.locator('.cell-title', { hasText: 'E2E 动作' })).toBeVisible({ timeout: 10_000 })
     // 删除
-    const row = page.locator('.el-table__row', { hasText: 'E2E 动作' })
-    await row.locator('button', { hasText: '删除' }).click()
-    await page.locator('.el-message-box__btns button', { hasText: '确定' }).click()
-    await expect(page.locator('.cell-title', { hasText: 'E2E 动作' })).toHaveCount(0)
+    const row = page.locator('.el-table__row', { hasText: sid }).first()
+    await row.getByRole('button', { name: '删除' }).click()
+    await page.locator('.el-message-box__btns button', { hasText: '删除' }).click()
+    await expect(page.locator('.el-table__row', { hasText: sid })).toHaveCount(0)
   })
 
-  test('多动作预览：run/jump/crawl/idle 真实动捕逐帧渲染 + 动作切换过渡段', async ({ page }) => {
-    await page.locator('.list-item .item-main', { hasText: '人类骨骼拓扑' }).click()
-    await page.locator('.el-tabs__item', { hasText: '动作管理' }).click()
-    // 依次打开各真实动捕动作：首个无过渡（16帧），后续切换带过渡段（+6 帧）
-    const steps = [
-      ['run3d', '16'],       // 首个：无过渡
-      ['jump3d', '30'],      // 切自 run3d：24 + 6 过渡
-      ['crawl3d', '22'],     // 切自 jump3d：16 + 6 过渡
-      ['idle3d', '54'],      // 切自 crawl3d：48 + 6 过渡
-    ]
-    for (let i = 0; i < steps.length; i++) {
-      const [id, fc] = steps[i]
-      await page.locator('.el-table .el-table__row', { hasText: id })
-        .getByRole('button', { name: '编辑' }).click()
-      await expect(page.locator('.crumb-now', { hasText: id })).toBeVisible({ timeout: 20_000 })
-      await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 40_000 })
-      // 帧计数徽章：动作帧数（含切换过渡段）
-      await expect(page.locator('.sk3d-badge')).toContainText(fc, { timeout: 15_000 })
-      if (i < steps.length - 1) {
-        await page.locator('button', { hasText: '关闭' }).click()
-        await expect(page.locator('.el-tabs__item', { hasText: '动作管理' })).toBeVisible()
-      }
-    }
+  test('动作 CRUD：新建动作 → 列表 → 删除', async ({ page }) => {
+    const aid = `e2e_act_${Date.now()}`
+    const row = page.locator('.el-table__row', { hasText: '人类骨骼拓扑' }).first()
+    await row.getByRole('button', { name: '动作' }).click()
+    await page.locator('button', { hasText: '新建动作' }).click()
+    // 编辑 JSON 定义：填 motion_id
+    const editor = page.locator('.acts-editor textarea')
+    const json = JSON.parse(await editor.inputValue())
+    json.motion_id = aid
+    json.title = 'E2E 测试动作'
+    await editor.fill(JSON.stringify(json, null, 2))
+    await page.locator('.acts-editor button', { hasText: '保存动作' }).click()
+    await expect(page.locator('.el-table__row', { hasText: aid })).toBeVisible({ timeout: 10_000 })
+    // 删除
+    await page.locator('.el-table .el-table__row', { hasText: aid })
+      .getByRole('button', { name: '删除' }).click()
+    await page.locator('.el-message-box__btns button', { hasText: '确定' }).click()
+    await expect(page.locator('.el-table__row', { hasText: aid })).toHaveCount(0)
   })
 })

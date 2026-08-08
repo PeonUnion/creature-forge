@@ -153,10 +153,95 @@ class SpeciesWizard:
         return self._root / species_id / DRAFT_NAME
 
     def _load_draft(self, species_id: str) -> dict:
+        """加载草稿；若无草稿但物种已存在 → 从已有 skeleton/default 加载（语义化编辑模式）。"""
         path = self._draft_path(species_id)
-        if not path.is_file():
-            raise KeyError(f"no species draft: {species_id}（先 species wizard init）")
-        return json.loads(path.read_text(encoding="utf-8"))
+        if path.is_file():
+            return json.loads(path.read_text(encoding="utf-8"))
+        if (self._root / species_id / "skeleton.json").is_file():
+            draft = self._load_existing(species_id)
+            self._save_draft(path, draft)
+            return draft
+        raise KeyError(f"no species draft: {species_id}（先 species wizard init 或编辑已有物种）")
+
+    def _load_existing(self, species_id: str) -> dict:
+        """从已有物种（skeleton.json + default.json）加载为向导草稿，供语义化编辑。"""
+        from .species import SpeciesService
+        species = SpeciesService(self._root)
+        skeleton = json.loads((self._root / species_id / "skeleton.json").read_text(encoding="utf-8"))
+        default: dict = {}
+        dp = self._root / species_id / "default.json"
+        if dp.is_file():
+            default = json.loads(dp.read_text(encoding="utf-8"))
+        return self._draft_from_skeleton(species_id, skeleton, default,
+                                         actions=[a.get("id", a.get("motion_id", ""))
+                                                  for a in species.list_actions(species_id)])
+
+    @staticmethod
+    def _draft_from_skeleton(species_id: str, skeleton: dict, default: dict | None = None,
+                             actions: list[str] | None = None) -> dict:
+        """skeleton/default dict → 向导草稿（高级 JSON 模式与普通模式共享数据的关键）。
+
+        兼容两种 joints 格式（human 分组列表 / 向导映射）；对称对从 constraints.symmetry3d 恢复；
+        parent 关系优先 fk_tree，其次 bones_3d 推断。
+        """
+        joints = skeleton.get("joints", {}) or {}
+        names: list[str] = []
+        if joints:
+            first = next(iter(joints.values()))
+            if isinstance(first, list):
+                names = list({j for v in joints.values() if isinstance(v, list) for j in v})
+            else:
+                names = list(joints)
+        sym: dict[str, str] = {}
+        for pair in ((skeleton.get("constraints", {}) or {}).get("symmetry3d", {}) or {}).get("pairs", []) or []:
+            if len(pair) == 2:
+                sym[pair[0]] = pair[1]
+                sym[pair[1]] = pair[0]
+        # parent：fk_tree 优先，其次 bones_3d 推断
+        fk = skeleton.get("fk_tree", {}) or {}
+        parent_of: dict[str, str | None] = {n: fk.get(n) for n in names}
+        if not any(parent_of.values()):
+            for a, b in skeleton.get("bones_3d", []) or []:
+                if b in parent_of and parent_of.get(b) is None:
+                    parent_of[b] = a
+        default = default or {}
+        nodes: dict = {}
+        for n in names:
+            nodes[n] = {"parent": parent_of.get(n), "sym": sym.get(n)}
+        return {
+            "schema": "creatureforge_wizard_v1",
+            "species_id": skeleton.get("species_id", species_id),
+            "morph": "existing",
+            "title": skeleton.get("title", species_id),
+            "description": skeleton.get("description", ""),
+            "nodes": nodes,
+            "chains": dict(skeleton.get("chains", {}) or {}),
+            "param_chains": dict(skeleton.get("param_chains", {}) or {}),
+            "default": {
+                "positions_3d": dict(default.get("positions_3d", {}) or {}),
+                "canvas": default.get("canvas", {"width": 960, "height": 600, "floor_y": 470.0}),
+                "head_radius": default.get("head_radius", 12.5),
+            },
+            "actions": actions or [],
+        }
+
+    # -- 高级 JSON 模式（与普通模式共享同一份草稿 draft） --
+
+    def files(self, species_id: str) -> dict:
+        """草稿派生的完整文件（skeleton/default），供高级 JSON 页签查看/编辑。"""
+        draft = self._load_draft(species_id)
+        return {"species_id": species_id, "skeleton": derive_skeleton(draft), "default": derive_default(draft)}
+
+    def save_files(self, species_id: str, skeleton: dict, default: dict | None = None) -> dict:
+        """高级 JSON 页签保存：校验骨架 → 重建草稿（普通模式立即同步）。"""
+        sk = dict(skeleton or {})
+        if not sk.get("species_id"):
+            sk["species_id"] = species_id
+        if not sk.get("joints") and not sk.get("bones_3d"):
+            raise ValueError("skeleton 缺少 joints/bones_3d")
+        draft = self._draft_from_skeleton(species_id, sk, default or {})
+        self._save_draft(self._draft_path(species_id), draft)
+        return self._view(draft)
 
     @staticmethod
     def _save_draft(path: Path, draft: dict) -> None:
