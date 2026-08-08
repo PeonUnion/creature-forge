@@ -29,6 +29,8 @@ const props = defineProps({
   center: { type: Array, default: () => [0, 0, 0] },
   material: { type: Object, default: () => ({}) },     // 皮肤材质覆盖 {albedo, roughness, metallic}（默认用 mesh.materials）
   bodyScale: { type: Number, default: 1 },             // 胖瘦缩放（>1 增宽 / <1 收窄，只缩放 x/z 保持身高）
+  bindJoints: { type: Object, default: () => ({}) },   // 骨架骨骼世界位置（Y-down，{bone:[x,y,z]}）
+  parts: { type: Array, default: () => [] },           // 皮肤部件（bone 装饰件：跟随绑定骨骼 + transform + mesh + 材质/贴图）
 })
 const emit = defineEmits(['ready', 'view'])
 
@@ -37,6 +39,7 @@ const mountEl = ref(null)
 let renderer, scene, camera, controls, skinMesh = null, grid = null
 let posAttr = null, fitTarget = new THREE.Vector3(), fitDist = 300
 let rafId = null, resizeObs = null, animTimer = null
+let partMeshes = []   // 皮肤部件网格（bone 装饰件）
 const playing = ref(false)
 const frameIndex = ref(0)
 
@@ -121,6 +124,65 @@ function buildSkin() {
   dl.position.set(300, 400, 300)
   scene.add(dl)
   scene.add(skinMesh)
+  buildParts()  // 皮肤部件（bone 装饰件：跟随绑定骨骼）
+}
+
+/** 皮肤部件：bone 装饰件 — mesh 摆放到绑定骨骼位置 + 相对变换（材质 + 贴图）。 */
+function buildParts() {
+  clearParts()
+  if (!scene) return
+  const bp = props.bindJoints || {}
+  for (const p of props.parts || []) {
+    const bpos = bp[p.bone]
+    if (!bpos) continue
+    const m = p.mesh || {}
+    if (!m.vertices || !m.vertices.length) continue
+    const geo = new THREE.BufferGeometry()
+    const pos = new Float32Array(m.vertices)
+    for (let k = 1; k < pos.length; k += 3) pos[k] = -pos[k]  // Y-down → Y-up
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    if (m.normals && m.normals.length) {
+      const nm = new Float32Array(m.normals)
+      for (let k = 1; k < nm.length; k += 3) nm[k] = -nm[k]
+      geo.setAttribute('normal', new THREE.BufferAttribute(nm, 3))
+    }
+    if (m.uvs && m.uvs.length) geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(m.uvs), 2))
+    if (m.indices && m.indices.length) geo.setIndex(m.indices)
+    let color = 0xc9a58c, map = null
+    if (p.materials && p.materials.albedo) color = p.materials.albedo
+    if (p.textures && p.textures.albedo) {
+      map = new THREE.TextureLoader().load(p.textures.albedo)
+      color = 0xffffff
+    }
+    const mat = new THREE.MeshStandardMaterial({
+      color, map, roughness: (p.materials && p.materials.roughness) ?? 0.6,
+      metalness: (p.materials && p.materials.metallic) ?? 0, side: THREE.DoubleSide,
+    })
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.frustumCulled = false
+    // 变换：骨骼绑定位置（Y-up）+ 相对骨骼偏移；rotation 用 F·R·F⁻¹ 镜像（Y-down → Y-up，与后端导出一致）
+    const tr = p.transform || {}
+    const pos3 = tr.position || [0, 0, 0]
+    const rot = tr.rotation || [0, 0, 0]
+    const scl = tr.scale || [1, 1, 1]
+    mesh.position.set(bpos[0] + pos3[0], -bpos[1] - pos3[1], bpos[2] + pos3[2])
+    const e = new THREE.Euler(rot[0], rot[1], rot[2], 'XYZ')
+    const F = new THREE.Matrix4().makeScale(1, -1, 1)
+    const mtx = new THREE.Matrix4().makeRotationFromEuler(e)
+    mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().multiplyMatrices(F, mtx).multiply(F))
+    mesh.scale.set(scl[0], scl[1], scl[2])
+    scene.add(mesh)
+    partMeshes.push(mesh)
+  }
+}
+
+function clearParts() {
+  for (const ms of partMeshes) {
+    if (scene) scene.remove(ms)
+    if (ms.geometry) ms.geometry.dispose()
+    if (ms.material) ms.material.dispose()
+  }
+  partMeshes = []
 }
 
 /** 增量更新顶点到指定帧（只改 position + 重算法线，不重建几何；应用皮肤胖瘦缩放） */
@@ -283,8 +345,16 @@ watch(() => [props.material, props.bodyScale], () => {
   updateFrame(frameIndex.value)
 }, { deep: true })
 
+// 皮肤部件 / 骨架变化 → 重建部件（跟随绑定骨骼）
+watch(() => [props.parts, props.bindJoints], () => {
+  if (!scene) return
+  buildParts()
+  renderer.render(scene, camera)
+}, { deep: true })
+
 onMounted(init)
 onBeforeUnmount(() => {
+  clearParts()
   if (animTimer) clearInterval(animTimer)
   if (rafId) cancelAnimationFrame(rafId)
   if (resizeObs) resizeObs.disconnect()

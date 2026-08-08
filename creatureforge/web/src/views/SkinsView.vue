@@ -109,7 +109,7 @@
               </div>
             </el-tab-pane>
 
-            <!-- 预览：蒙皮（应用皮肤材质 + 胖瘦） -->
+            <!-- 预览：蒙皮（应用皮肤材质 + 胖瘦 + 部件） -->
             <el-tab-pane label="👁 预览" name="preview">
               <div class="preview-controls">
                 <CameraControls v-model="cam" />
@@ -121,8 +121,66 @@
               <SkinnedViewer v-if="previewData" ref="previewViewer"
                 :mesh="previewData.mesh" :frames="previewData.frames" :fps="previewData.fps"
                 :center="previewData.center" :material="current.materials"
+                :bind-joints="previewData.bindJoints" :parts="previewData.parts"
                 @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
               <div v-else class="preview-empty"><p>{{ rendering ? '渲染中…' : '选择动作加载蒙皮预览（应用当前皮肤参数）' }}</p></div>
+            </el-tab-pane>
+
+            <!-- 部件：游戏皮肤式（上传画师文件 → 拆解部件 → 附着到骨架） -->
+            <el-tab-pane label="🧩 部件" name="parts">
+              <div class="parts-head">
+                <p class="hint">皮肤部件 = 画师导出部件（网格 + 贴图 + 材质）附着到骨架。上传 glTF/GLB/OBJ/JSON 网格 + 图片贴图，选绑定骨骼并调整偏移，形成最终皮肤效果。</p>
+                <el-button size="small" type="primary" icon="Plus" @click="startPart">添加部件</el-button>
+              </div>
+              <div v-if="!(current.parts && current.parts.length)" class="preview-empty">
+                <p>暂无部件。点击「添加部件」，上传画师部件文件并附着到骨架（如头盔 → 头骨）。</p>
+              </div>
+              <div v-else class="parts-list">
+                <div v-for="pt in current.parts" :key="pt.part_id" class="part-card">
+                  <div class="part-head">
+                    <span class="part-name">🧩 {{ pt.title || pt.part_id }}</span>
+                    <span class="part-id">{{ pt.part_id }}</span>
+                    <el-tag size="small" effect="plain">{{ pt.kind === 'skinned' ? '蒙皮' : '装饰' }}</el-tag>
+                    <el-button size="small" text type="danger" @click="deletePart(pt)">删除</el-button>
+                  </div>
+                  <div class="part-row">
+                    <label>网格文件</label>
+                    <input type="file" accept=".glb,.gltf,.obj,.json" @change="uploadMesh(pt, $event)" />
+                    <span v-if="pt.mesh_file" class="ok">✓ {{ pt.mesh_file }}</span>
+                    <span v-else-if="pt.mesh" class="ok">内嵌 {{ pt.mesh.vertex_count }} 顶点</span>
+                    <span v-else class="missing">未上传</span>
+                  </div>
+                  <div class="part-row">
+                    <label>贴图 albedo</label>
+                    <input type="file" accept="image/*" @change="uploadTex(pt, 'albedo', $event)" />
+                    <span v-if="pt.textures && pt.textures.albedo" class="ok">✓ 已上传</span>
+                  </div>
+                  <div class="part-row">
+                    <label>绑定骨骼</label>
+                    <el-select v-model="pt.bone" size="small" filterable style="width: 180px" @change="schedulePartPatch">
+                      <el-option v-for="b in boneList" :key="b" :label="b" :value="b" />
+                    </el-select>
+                  </div>
+                  <div class="part-row">
+                    <label>位置 x/y/z</label>
+                    <el-input-number v-model="pt.transform.position[0]" size="small" :step="2" @change="schedulePartPatch" />
+                    <el-input-number v-model="pt.transform.position[1]" size="small" :step="2" @change="schedulePartPatch" />
+                    <el-input-number v-model="pt.transform.position[2]" size="small" :step="2" @change="schedulePartPatch" />
+                  </div>
+                  <div class="part-row">
+                    <label>旋转 r/p/y</label>
+                    <el-input-number v-model="pt.transform.rotation[0]" size="small" :step="5" @change="schedulePartPatch" />
+                    <el-input-number v-model="pt.transform.rotation[1]" size="small" :step="5" @change="schedulePartPatch" />
+                    <el-input-number v-model="pt.transform.rotation[2]" size="small" :step="5" @change="schedulePartPatch" />
+                  </div>
+                  <div class="part-row">
+                    <label>缩放 x/y/z</label>
+                    <el-input-number v-model="pt.transform.scale[0]" size="small" :step="0.1" @change="schedulePartPatch" />
+                    <el-input-number v-model="pt.transform.scale[1]" size="small" :step="0.1" @change="schedulePartPatch" />
+                    <el-input-number v-model="pt.transform.scale[2]" size="small" :step="0.1" @change="schedulePartPatch" />
+                  </div>
+                </div>
+              </div>
             </el-tab-pane>
           </el-tabs>
         </div>
@@ -164,6 +222,9 @@ const previewData = ref(null)
 const previewViewer = ref(null)
 const rendering = ref(false)
 let renderTimer = null
+// 部件（游戏皮肤式）：骨架骨骼列表 + 变换防抖提交
+const boneList = ref([])
+let partTimer = null
 
 const schema = computed(() => current.value?.schema_info || { params: {}, materials: {} })
 const paramItems = computed(() => {
@@ -209,6 +270,7 @@ async function openSkin(s) {
     tab.value = 'params'
     previewAction.value = ''
     previewData.value = null
+    await loadBones()
   } catch (e) { ElMessage.error(e.message) }
 }
 
@@ -222,6 +284,8 @@ async function initNew() {
     creating.value = false
     tab.value = 'params'
     previewAction.value = ''
+    current.value.parts = current.value.parts || []
+    await loadBones()
   } catch (e) { ElMessage.error(e.message) }
 }
 
@@ -284,6 +348,104 @@ async function renderLive() {
   } catch (e) { previewData.value = null }
   rendering.value = false
 }
+
+// -- 部件（游戏皮肤式：上传画师文件 → 拆解部件 → 附着到骨架） --
+
+async function loadBones() {
+  if (!current.value?.species) { boneList.value = []; return }
+  try {
+    const r = await api.skeleton3dData(current.value.species)
+    boneList.value = Object.keys(r.joints || {})
+  } catch (e) { boneList.value = [] }
+}
+
+function fileToB64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader()
+    r.onload = () => res(String(r.result).split(',')[1])
+    r.onerror = rej
+    r.readAsDataURL(file)
+  })
+}
+
+async function refreshCurrent() {
+  if (!current.value) return
+  current.value = await api.skinDetail(current.value.skin_id)
+}
+
+async function startPart() {
+  if (!current.value) return
+  const n = (current.value.parts || []).length + 1
+  try {
+    await api.skinPartAdd(current.value.skin_id, {
+      part_id: `p_${Date.now().toString(36)}`,
+      title: `部件${n}`,
+      kind: 'bone',
+      bone: boneList.value[0] || '',
+      transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+      mesh: null, mesh_file: null, textures: {}, materials: {}, weights: null,
+    })
+    await refreshCurrent()
+    ElMessage.success('部件已添加，上传网格文件并选择绑定骨骼')
+  } catch (e) { ElMessage.error(e.message) }
+}
+
+async function uploadMesh(pt, e) {
+  const f = e.target.files && e.target.files[0]
+  e.target.value = ''
+  if (!f || !current.value) return
+  try {
+    const b64 = await fileToB64(f)
+    const r = await api.skinPartUploadMesh(current.value.skin_id, pt.part_id, f.name, b64)
+    ElMessage.success(`网格已上传（${f.name}）`)
+    await refreshCurrent()  // 重新加载（含解析出的材质/贴图）
+    if (previewAction.value) scheduleRender()
+  } catch (e) { ElMessage.error(e.message) }
+}
+
+async function uploadTex(pt, field, e) {
+  const f = e.target.files && e.target.files[0]
+  e.target.value = ''
+  if (!f || !current.value) return
+  try {
+    const b64 = await fileToB64(f)
+    await api.skinPartUploadTexture(current.value.skin_id, pt.part_id, field, f.name, b64)
+    ElMessage.success(`贴图已上传（${field}）`)
+    await refreshCurrent()
+    if (previewAction.value) scheduleRender()
+  } catch (e) { ElMessage.error(e.message) }
+}
+
+async function deletePart(pt) {
+  if (!current.value) return
+  try {
+    await api.skinPartDelete(current.value.skin_id, pt.part_id)
+    await refreshCurrent()
+    if (previewAction.value) scheduleRender()
+  } catch (e) { ElMessage.error(e.message) }
+}
+
+/** 部件变换/骨骼变化 → 防抖提交到后端（保存皮肤时也一起持久化） */
+function schedulePartPatch() {
+  if (!current.value || partTimer) return
+  partTimer = setTimeout(async () => {
+    partTimer = null
+    // 保存皮肤时把 parts 一并写回（skin_update 已持久化 parts）
+  }, 0)
+}
+
+// 保存时（skin_update）会把 current.parts 一起写回后端 → 变换/骨骼即时生效
+watch(() => current.value?.parts, () => {
+  if (!current.value || !current.value.skin_id) return
+  if (partTimer) clearTimeout(partTimer)
+  partTimer = setTimeout(async () => {
+    partTimer = null
+    try {
+      await api.updateSkin(current.value.skin_id, current.value)
+      if (previewAction.value) scheduleRender()
+    } catch (e) { /* 静默：保存皮肤时兜底 */ }
+  }, 600)
+}, { deep: true })
 </script>
 
 <style scoped>

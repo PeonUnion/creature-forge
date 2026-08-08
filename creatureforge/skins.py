@@ -181,3 +181,137 @@ class SkinService:
             raise KeyError(f"skin not found: {skin_id}")
         path.unlink()
         return skin_id
+
+    # ------------------------------------------------------------------
+    # 皮肤部件（游戏皮肤式：上传画师文件 → 拆解部件 → 附着到骨架）
+    # 部件资产存 data/skins/assets/<skin_id>/<part_id>/（mesh + 贴图）
+    # ------------------------------------------------------------------
+
+    def _assets_dir(self, skin_id: str) -> Path:
+        return self._root / "assets" / skin_id
+
+    def _part_dir(self, skin_id: str, part_id: str) -> Path:
+        return self._assets_dir(skin_id) / part_id
+
+    def _load_skin(self, skin_id: str) -> dict:
+        path = self._path(skin_id)
+        if not path.is_file():
+            raise KeyError(f"skin not found: {skin_id}")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def part_add(self, skin_id: str, part: dict) -> str:
+        """添加部件到皮肤（part 含 kind/bone/transform/mesh 或 mesh_file 等）。"""
+        skin = self._load_skin(skin_id)
+        pid = (part.get("part_id") or "").strip()
+        if not pid:
+            raise ValueError("part_id required")
+        parts = skin.setdefault("parts", [])
+        if any(p.get("part_id") == pid for p in parts):
+            raise FileExistsError(f"part already exists: {pid}")
+        p = dict(part)
+        p.setdefault("kind", "bone")
+        p.setdefault("bone", "")
+        p.setdefault("transform", {"position": [0, 0, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1]})
+        p.setdefault("mesh", None)
+        p.setdefault("mesh_file", None)
+        p.setdefault("textures", {})
+        p.setdefault("materials", {})
+        p.setdefault("weights", None)
+        parts.append(p)
+        self._save(self._path(skin_id), skin)
+        return pid
+
+    def part_update(self, skin_id: str, part_id: str, patch: dict) -> str:
+        """更新部件（patch 为增量字段；transform/materials/textures 整体替换）。"""
+        skin = self._load_skin(skin_id)
+        parts = skin.get("parts", [])
+        for p in parts:
+            if p.get("part_id") == part_id:
+                for k, v in patch.items():
+                    if k == "schema_info":
+                        continue
+                    p[k] = v
+                self._save(self._path(skin_id), skin)
+                return part_id
+        raise KeyError(f"part not found: {part_id}")
+
+    def part_delete(self, skin_id: str, part_id: str) -> str:
+        """删除部件（连同资产目录）。"""
+        skin = self._load_skin(skin_id)
+        parts = skin.get("parts", [])
+        keep = [p for p in parts if p.get("part_id") != part_id]
+        if len(keep) == len(parts):
+            raise KeyError(f"part not found: {part_id}")
+        skin["parts"] = keep
+        self._save(self._path(skin_id), skin)
+        # 清理资产（尽力而为）
+        import shutil
+        d = self._part_dir(skin_id, part_id)
+        if d.is_dir():
+            shutil.rmtree(d, ignore_errors=True)
+        return part_id
+
+    def part_upload_mesh(self, skin_id: str, part_id: str, filename: str, data: bytes) -> dict:
+        """上传/替换部件网格文件（.glb/.gltf/.obj/.json）→ 解析 → 存资产 → 更新 part。
+
+        返回解析结果 {mesh, materials, textures}（供前端内嵌或引用）。
+        """
+        from .skinparts import parse_mesh_file
+        parsed = parse_mesh_file(filename, data)
+        d = self._part_dir(skin_id, part_id)
+        d.mkdir(parents=True, exist_ok=True)
+        ext = filename.lower().split(".")[-1]
+        mesh_name = f"mesh.{ext}"
+        (d / mesh_name).write_bytes(data)
+        # 内嵌贴图存文件
+        textures: dict[str, str] = {}
+        for tname, tbytes in (parsed.get("textures") or {}).items():
+            ext_t = _texture_ext(tname, tbytes)
+            tfile = f"{tname}.{ext_t}"
+            (d / tfile).write_bytes(tbytes)
+            textures[tname] = f"skin://{part_id}/{tfile}"
+        # 更新 part（mesh_file + materials + textures，不内嵌大 mesh）
+        self.part_update(skin_id, part_id, {
+            "mesh_file": f"{part_id}/{mesh_name}",
+            "mesh": None,
+            "materials": parsed.get("materials", {}),
+            "textures": textures,
+        })
+        parsed.pop("textures", None)
+        parsed["mesh_file"] = f"{part_id}/{mesh_name}"
+        return parsed
+
+    def part_upload_texture(self, skin_id: str, part_id: str, field: str, filename: str, data: bytes) -> str:
+        """上传部件贴图（field: albedo/normal/metallicRoughness...）→ 存资产 → 更新 part.textures。"""
+        d = self._part_dir(skin_id, part_id)
+        d.mkdir(parents=True, exist_ok=True)
+        ext = (filename.lower().split(".")[-1] or "png")
+        if ext not in ("png", "jpg", "jpeg", "webp"):
+            raise ValueError(f"不支持的贴图格式: {filename}（支持 png/jpg/webp）")
+        tfile = f"{field}.{ext}"
+        (d / tfile).write_bytes(data)
+        ref = f"skin://{part_id}/{tfile}"
+        skin = self._load_skin(skin_id)
+        for p in skin.get("parts", []):
+            if p.get("part_id") == part_id:
+                p.setdefault("textures", {})[field] = ref
+                self._save(self._path(skin_id), skin)
+                return ref
+        raise KeyError(f"part not found: {part_id}")
+
+    def part_asset_path(self, skin_id: str, ref: str) -> Path:
+        """贴图引用 skin://<part_id>/<file> → 资产文件绝对路径。"""
+        if not ref.startswith("skin://"):
+            raise KeyError(f"not a skin asset ref: {ref}")
+        return self._assets_dir(skin_id) / ref[len("skin://"):]
+
+
+def _texture_ext(name: str, data: bytes) -> str:
+    """按魔数推断图片扩展名（GLB 内嵌贴图无扩展名）。"""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "jpg"
+    if data[:4] == b"RIFF":
+        return "webp"
+    return "png"

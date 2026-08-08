@@ -172,16 +172,44 @@ class PresetSummary(TypedDict):
     species: str
 
 
+class SkinPart(TypedDict):
+    """皮肤部件（游戏皮肤式：画师拆解部件，附着到骨架）。
+
+    part_id: 唯一标识，如 "p_helmet"
+    title: 显示名（如 "头盔"）
+    kind: 附着方式 — "bone"（装饰件：绑定单骨骼跟随）| "skinned"（蒙皮件：带权重 LBS 变形）
+    bone: bone 部件绑定的骨骼（骨架骨骼名，如 "head"）
+    transform: 相对骨骼的偏移 {position:[x,y,z], rotation:[rx,ry,rz], scale:[sx,sy,sz]}
+    mesh_file: 外部网格文件引用（"<part_id>/mesh.glb" / obj / json，存 data/skins/assets/<skin_id>/）
+    mesh: 内嵌网格 {vertices, indices, normals, uvs, vertex_count}（JSON 上传时）
+    textures: 贴图文件引用 {"albedo": "skin://<part_id>/albedo.png", ...}
+    materials: 材质参数 {albedo, roughness, metallic}
+    weights: skinned 部件的蒙皮权重 {boneNames, perVertex}
+    """
+
+    part_id: str
+    title: str
+    kind: str
+    bone: str
+    transform: Dict[str, List[float]]
+    mesh_file: str | None
+    mesh: Dict[str, object] | None
+    textures: Dict[str, str]
+    materials: Dict[str, object]
+    weights: Dict[str, object] | None
+
+
 class Skin(TypedDict):
-    """皮肤（基于预设的外观实例：皮肤参数 + 材质参数）。
+    """皮肤（基于预设的外观实例：皮肤参数 + 材质参数 + 部件集合）。
 
     skin_id: 唯一标识，如 "sk_warrior"
     schema: 格式版本 "creatureforge_skin_v1"
     title / description: 显示信息
     preset: 引用的预设 ID（schema 由预设的物种皮肤定义派生）
     species: 预设的物种 ID（冗余，网格/权重基底，schema 来源）
-    materials: 材质参数（albedo 颜色 / roughness 粗糙度 / metallic 金属度）
-    params: 皮肤参数当前值（如 skin_tone 肤色 / fat 体脂 / muscle 肌肉）
+    materials: 基底材质参数（albedo 颜色 / roughness 粗糙度 / metallic 金属度）
+    params: 基底皮肤参数当前值（如 skin_tone 肤色 / fat 体脂 / muscle 肌肉）
+    parts: 皮肤部件集合（游戏皮肤式：上传网格/贴图 + 附着到骨架）
     """
 
     schema: str
@@ -192,6 +220,7 @@ class Skin(TypedDict):
     species: str
     materials: Dict[str, object]
     params: Dict[str, float]
+    parts: List[SkinPart]
 
 
 class SkinSummary(TypedDict):

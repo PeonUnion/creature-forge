@@ -148,6 +148,14 @@ def cmd_skin(args) -> None:
         print("updated:", svc.skin_update(args.id, _load_json_arg(args)))
     elif args.sub == "delete":
         print("deleted:", svc.skin_delete(args.id))
+    elif args.sub == "parts":
+        skin = svc.skin_get(args.id)
+        for p in skin.get("parts", []):
+            print(f"  {p['part_id']:20s} {p.get('title',''):20s} [{p.get('kind')}] bone={p.get('bone')} mesh={p.get('mesh_file') or '内嵌'}", file=sys.stdout)
+    elif args.sub == "part-add":
+        print("part:", svc.skin_part_add(args.id, _load_json_arg(args)))
+    elif args.sub == "part-del":
+        print("deleted:", svc.skin_part_delete(args.id, args.part))
 
 
 def cmd_render(args) -> None:
@@ -255,6 +263,9 @@ def build_parser() -> argparse.ArgumentParser:
     s1_ = ssp_.add_parser("create"); s1_.add_argument("--json"); s1_.add_argument("--file")
     s1_ = ssp_.add_parser("update"); s1_.add_argument("id"); s1_.add_argument("--json"); s1_.add_argument("--file")
     s1_ = ssp_.add_parser("delete"); s1_.add_argument("id")
+    pp_ = ssp_.add_parser("parts"); pp_.add_argument("id", help="皮肤 id（列出部件）")
+    pa_ = ssp_.add_parser("part-add"); pa_.add_argument("id"); pa_.add_argument("--json"); pa_.add_argument("--file")
+    pd_ = ssp_.add_parser("part-del"); pd_.add_argument("id"); pd_.add_argument("part")
 
     # render
     rp = sub.add_parser("render", help="3D 渲染到文件")

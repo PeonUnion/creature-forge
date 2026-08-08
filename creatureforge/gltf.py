@@ -100,16 +100,19 @@ class _GLB:
 
 
 def export_glb(skel3d: dict, skin: dict, motion3d: dict, params: dict | None = None,
-               body_scale: float | None = None, materials: dict | None = None) -> bytes:
-    """导出 .glb（骨骼 + 蒙皮网格 + 动作动画）。
+               body_scale: float | None = None, materials: dict | None = None,
+               parts: list[dict] | None = None) -> bytes:
+    """导出 .glb（骨骼 + 蒙皮网格 + 皮肤部件 + 动作动画）。
 
     skel3d: build_skeleton_3d 输出（joints/fk_tree/fk_local/bones）
     skin:  {"mesh": mesh.json, "weights": weights.json}
     motion3d: 动作 JSON（fk3d 旋转表 + root3d）
     body_scale: 可选，绑定姿态顶点 x/z 缩放（皮肤体态，如 fat/muscle → 胖瘦）
-    materials: 可选，材质覆盖 {albedo, roughness, metallic}（皮肤材质）
+    materials: 可选，基底材质覆盖 {albedo, roughness, metallic}
+    parts: 可选，皮肤部件 [{bone, transform, mesh, materials, textures:{name:(ext,bytes)}}]
+           — bone 装饰件：mesh 挂在绑定骨骼 node 下，跟随骨骼变换。
     """
-    from .skeleton3d import per_frame_trs
+    from .skeleton3d import per_frame_trs, _flip_euler
 
     mesh = skin["mesh"]
     weights = skin["weights"]
@@ -195,6 +198,56 @@ def export_glb(skel3d: dict, skin: dict, motion3d: dict, params: dict | None = N
             "baseColorFactor": [bc[0], bc[1], bc[2], 1.0],
             "metallicFactor": metal, "roughnessFactor": rough},
         "doubleSided": True, "name": "skin"})
+    # ---- 皮肤部件（bone 装饰件：mesh 挂在绑定骨骼 node 下，跟随骨骼）----
+    for part in parts or []:
+        pmesh = part.get("mesh") or {}
+        if not pmesh.get("vertices"):
+            continue
+        bone_name = part.get("bone", "")
+        if bone_name not in idx_of:
+            continue  # 绑定骨骼不存在 → 跳过
+        parent_node = idx_of[bone_name]
+        pv = pmesh["vertices"]
+        pn = pmesh.get("normals") or []
+        pu = pmesh.get("uvs") or []
+        pi = pmesh.get("indices") or list(range(len(pv) // 3))
+        # 部件网格顶点 Y-down → Y-up
+        pos_flat = []
+        for k in range(0, len(pv), 3):
+            pos_flat += [pv[k], -pv[k + 1], pv[k + 2]]
+        nrm_flat = []
+        for k in range(0, len(pn), 3):
+            nrm_flat += [pn[k], -pn[k + 1], pn[k + 2]]
+        p_acc_pos = g.accessor(pos_flat, COMP_FLOAT, 3, T_VEC3)
+        attrs = {"POSITION": p_acc_pos}
+        if nrm_flat:
+            attrs["NORMAL"] = g.accessor(nrm_flat, COMP_FLOAT, 3, T_VEC3)
+        if pu:
+            attrs["TEXCOORD_0"] = g.accessor(list(pu), COMP_FLOAT, 2, T_VEC2)
+        p_acc_idx = g.accessor(list(pi), COMP_USHORT, 1, T_SCALAR)
+        mat_idx = _part_material(g, part.get("materials") or {}, part.get("textures") or {})
+        g.json["meshes"].append({
+            "primitives": [{"attributes": attrs, "indices": p_acc_idx, "material": mat_idx}],
+            "name": part.get("part_id", "part")})
+        mesh_i = len(g.json["meshes"]) - 1
+        # 节点变换：position Y-down→Y-up；rotation 欧拉→四元数；scale 不变
+        tr = part.get("transform") or {}
+        pos = tr.get("position") or [0.0, 0.0, 0.0]
+        rot = tr.get("rotation") or [0.0, 0.0, 0.0]
+        scl = tr.get("scale") or [1.0, 1.0, 1.0]
+        try:
+            rot_up = _flip_euler(float(rot[0]), float(rot[1]), float(rot[2]))
+        except Exception:
+            rot_up = [0.0, 0.0, 0.0]
+        pnode = len(g.json["nodes"])
+        g.json["nodes"].append({
+            "name": part.get("part_id", "part"),
+            "mesh": mesh_i,
+            "translation": [float(pos[0]), -float(pos[1]), float(pos[2])],
+            "rotation": _quat_from_euler_xyz(rot_up[0], rot_up[1], rot_up[2]),
+            "scale": [float(scl[0]), float(scl[1]), float(scl[2])],
+        })
+        g.json["nodes"][parent_node].setdefault("children", []).append(pnode)
     # ---- skin：joints + inverseBindMatrices（绑定姿态相对根）----
     ibm = []
     for name in bn:
@@ -256,3 +309,44 @@ def _json_bytes(obj: dict) -> bytes:
     b = json.dumps(obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     pad = (4 - len(b) % 4) % 4
     return b + b" " * pad
+
+
+def _add_image(g: "_GLB", ext: str, data: bytes) -> int:
+    """贴图字节 → glTF image（写入 BIN），返回 image 索引。"""
+    vi = g._view(data)
+    mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+            "webp": "image/webp"}.get(ext, "image/png")
+    img_i = len(g.json["images"])
+    g.json["images"].append({"bufferView": vi, "mimeType": mime})
+    return img_i
+
+
+def _part_material(g: "_GLB", pmat: dict, tex: dict) -> int:
+    """部件材质（albedo/roughness/metallic + 贴图 → glTF material），返回 material 索引。"""
+    bc = _hex_to_rgb(str(pmat.get("albedo", "#c9a58c")))
+    rough = float(pmat.get("roughness", 0.6))
+    metal = float(pmat.get("metallic", 0.0))
+    pbr = {"baseColorFactor": [bc[0], bc[1], bc[2], 1.0],
+           "metallicFactor": metal, "roughnessFactor": rough}
+    m = {"pbrMetallicRoughness": pbr, "doubleSided": True, "name": "skin_part"}
+    if "albedo" in tex:
+        ext, tdata = tex["albedo"]
+        img_i = _add_image(g, ext, tdata)
+        tex_idx = len(g.json["textures"])
+        g.json["textures"].append({"source": img_i})
+        pbr["baseColorTexture"] = {"index": tex_idx}
+        pbr["baseColorFactor"] = [1.0, 1.0, 1.0, 1.0]  # 贴图本色
+    if "normal" in tex:
+        ext, tdata = tex["normal"]
+        img_i = _add_image(g, ext, tdata)
+        tex_idx = len(g.json["textures"])
+        g.json["textures"].append({"source": img_i})
+        m["normalTexture"] = {"index": tex_idx}
+    if "metallic_roughness" in tex:
+        ext, tdata = tex["metallic_roughness"]
+        img_i = _add_image(g, ext, tdata)
+        tex_idx = len(g.json["textures"])
+        g.json["textures"].append({"source": img_i})
+        pbr["metallicRoughnessTexture"] = {"index": tex_idx}
+    g.json["materials"].append(m)
+    return len(g.json["materials"]) - 1

@@ -469,13 +469,60 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             return self._json({"ok": False, "error": f"skin not found: {parts[0]}"}, 404)
 
     def _skins_post(self) -> None:
-        """POST /api/skins — create; PUT /api/skins/<id> — update。"""
+        """POST/PUT /api/skins 路由：
+        - POST /api/skins                  → 创建皮肤
+        - POST /api/skins/<id>/parts       → 添加部件（body=part）
+        - POST /api/skins/<id>/parts/<p>/mesh   → 上传部件网格（body={filename, data_b64}）
+        - POST /api/skins/<id>/parts/<p>/texture → 上传部件贴图（body={field, filename, data_b64}）
+        - PUT  /api/skins/<id>             → 更新皮肤
+        - PUT  /api/skins/<id>/parts/<p>   → 更新部件（body=patch）
+        """
         from urllib.parse import urlparse
         parts = _path_parts(urlparse(self.path).path, "/api/skins")
         try:
             body = self._read_body()
         except Exception as e:
             return self._json({"ok": False, "error": str(e)}, 400)
+        # -- 部件路由 --
+        if len(parts) >= 2 and parts[1] == "parts":
+            skin_id, part_id = parts[0], (parts[2] if len(parts) > 2 else None)
+            # 上传部件网格
+            if part_id and len(parts) == 4 and parts[3] == "mesh":
+                try:
+                    data = _b64decode(body.get("data_b64", ""))
+                    parsed = self.api.skin_part_upload_mesh(skin_id, part_id,
+                                                            body.get("filename", ""), data)
+                except Exception as e:
+                    return self._json({"ok": False, "error": str(e)}, 400)
+                return self._json({"ok": True, **parsed})
+            # 上传部件贴图
+            if part_id and len(parts) == 4 and parts[3] == "texture":
+                try:
+                    data = _b64decode(body.get("data_b64", ""))
+                    ref = self.api.skin_part_upload_texture(skin_id, part_id,
+                                                            body.get("field", "albedo"),
+                                                            body.get("filename", ""), data)
+                except Exception as e:
+                    return self._json({"ok": False, "error": str(e)}, 400)
+                return self._json({"ok": True, "ref": ref})
+            # 添加部件（POST）
+            if not part_id:
+                try:
+                    pid = self.api.skin_part_add(skin_id, body)
+                except FileExistsError as e:
+                    return self._json({"ok": False, "error": str(e)}, 409)
+                except (ValueError, KeyError) as e:
+                    return self._json({"ok": False, "error": str(e)}, 400)
+                return self._json({"ok": True, "part": pid})
+            # 更新部件（PUT）
+            try:
+                self.api.skin_part_update(skin_id, part_id, body)
+            except KeyError:
+                return self._json({"ok": False, "error": f"part not found: {part_id}"}, 404)
+            except Exception as e:
+                return self._json({"ok": False, "error": str(e)}, 400)
+            return self._json({"ok": True, "updated": part_id})
+        # -- 皮肤创建 / 更新 --
         if not parts:
             try:
                 sid = self.api.skin_create(body)
@@ -493,11 +540,17 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         return self._json({"ok": True, "updated": sid})
 
     def _skins_delete(self) -> None:
-        """DELETE /api/skins/<id> — delete skin。"""
+        """DELETE /api/skins/<id> — 删除皮肤; /api/skins/<id>/parts/<p> — 删除部件。"""
         from urllib.parse import urlparse
         parts = _path_parts(urlparse(self.path).path, "/api/skins")
         if not parts:
             return self._json({"ok": False, "error": "missing id"}, 400)
+        if len(parts) >= 3 and parts[1] == "parts":
+            try:
+                self.api.skin_part_delete(parts[0], parts[2])
+            except KeyError:
+                return self._json({"ok": False, "error": f"part not found: {parts[2]}"}, 404)
+            return self._json({"ok": True, "deleted": parts[2]})
         try:
             self.api.skin_delete(parts[0])
         except KeyError:
@@ -572,6 +625,15 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
 
 def _path_parts(path: str, prefix: str) -> list[str]:
     return [unquote(p) for p in path[len(prefix):].rstrip("/").split("/") if p]
+
+
+def _b64decode(data_b64: str) -> bytes:
+    """上传文件 base64 解码（兼容 data URI 前缀）。"""
+    import base64
+    s = (data_b64 or "").strip()
+    if "," in s and s.startswith("data:"):
+        s = s.split(",", 1)[1]
+    return base64.b64decode(s)
 
 
 def _float_map(body: dict, keys: tuple[str, ...]) -> dict[str, float]:

@@ -130,6 +130,73 @@ class ApiService:
     def skin_delete(self, skin_id: str) -> str:
         return self.skins.delete(skin_id)
 
+    # -- 皮肤部件（游戏皮肤式：上传画师文件 → 拆解部件 → 附着到骨架） --
+
+    def skin_part_add(self, skin_id: str, part: dict) -> str:
+        return self.skins.part_add(skin_id, part)
+
+    def skin_part_update(self, skin_id: str, part_id: str, patch: dict) -> str:
+        return self.skins.part_update(skin_id, part_id, patch)
+
+    def skin_part_delete(self, skin_id: str, part_id: str) -> str:
+        return self.skins.part_delete(skin_id, part_id)
+
+    def skin_part_upload_mesh(self, skin_id: str, part_id: str, filename: str, data: bytes) -> dict:
+        return self.skins.part_upload_mesh(skin_id, part_id, filename, data)
+
+    def skin_part_upload_texture(self, skin_id: str, part_id: str, field: str, filename: str, data: bytes) -> str:
+        return self.skins.part_upload_texture(skin_id, part_id, field, filename, data)
+
+    def _load_part_mesh(self, skin: dict, part: dict) -> dict | None:
+        """加载部件网格（内嵌 mesh 或外部 mesh_file 解析）。"""
+        if part.get("mesh"):
+            return part["mesh"]
+        mf = part.get("mesh_file")
+        if mf:
+            path = self.skins._assets_dir(skin.get("skin_id", "")) / mf
+            if path.is_file():
+                from .skinparts import parse_mesh_file
+                try:
+                    return parse_mesh_file(path.name, path.read_bytes())["mesh"]
+                except Exception:
+                    return None
+        return None
+
+    def _parts_preview(self, skin_id: str) -> list[dict]:
+        """部件预览数据（bone 部件：mesh + 附着骨骼 + transform + 材质 + 贴图 data_url）。"""
+        import base64
+        try:
+            skin = self.skins.get(skin_id)
+        except Exception:
+            return []
+        out: list[dict] = []
+        for p in skin.get("parts", []):
+            if p.get("kind") != "bone":
+                continue  # 阶段 A：只支持 bone 装饰件
+            mesh = self._load_part_mesh(skin, p)
+            if not mesh:
+                continue
+            tex_urls: dict[str, str] = {}
+            for fname, ref in (p.get("textures") or {}).items():
+                try:
+                    tpath = self.skins.part_asset_path(skin_id, ref)
+                    if tpath.is_file():
+                        ext = tpath.suffix.lstrip(".") or "png"
+                        tex_urls[fname] = ("data:image/%s;base64," % ext
+                                           + base64.b64encode(tpath.read_bytes()).decode())
+                except Exception:
+                    pass
+            out.append({
+                "part_id": p.get("part_id", ""),
+                "title": p.get("title", p.get("part_id", "")),
+                "bone": p.get("bone", ""),
+                "transform": p.get("transform", {"position": [0, 0, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1]}),
+                "mesh": mesh,
+                "materials": p.get("materials") or {},
+                "textures": tex_urls,
+            })
+        return out
+
     # ------------------------------------------------------------------
     # 3D 渲染
     # ------------------------------------------------------------------
@@ -248,7 +315,8 @@ class ApiService:
                 "trs": per_frame_trs(motion, params=p),  # 每帧骨骼 TRS（导出 glTF 动画）
                 "frame_count": n,
                 "fps": int(motion.get("fps", 6)) or 6,
-                "center": list(skel3d.get("center", (480.0, 300.0, 0.0)))}
+                "center": list(skel3d.get("center", (480.0, 300.0, 0.0))),
+                "parts": self._parts_preview(skin_id) if skin_id else []}
 
     def _resolve_motion_source(self, action_id: str, *, species: str | None = None,
                                preset: str | None = None, body: dict | None = None,
@@ -310,11 +378,34 @@ class ApiService:
         skel3d = build_skeleton_3d(species_id, body=body, species_root=self.species._root)
         skin = self._load_skin(species_id)
         materials, body_scale = self._apply_skin(skin, skin_id)
-        glb = _export_glb(skel3d, skin, motion, params, body_scale=body_scale, materials=materials)
+        parts = self._parts_glb(skin_id) if skin_id else []
+        glb = _export_glb(skel3d, skin, motion, params, body_scale=body_scale,
+                          materials=materials, parts=parts)
         if out:
             Path(out).write_bytes(glb)
             return {"ok": True, "glb": str(out), "bytes": len(glb)}
         return glb
+
+    def _parts_glb(self, skin_id: str) -> list[dict]:
+        """部件导出数据（bone 部件：mesh + 附着骨骼 + transform + 材质 + 贴图二进制）。"""
+        out: list[dict] = []
+        for p in self._parts_preview(skin_id):
+            tex_bytes: dict[str, tuple[str, bytes]] = {}
+            for fname, durl in (p.get("textures") or {}).items():
+                if durl.startswith("data:"):
+                    import base64
+                    meta, b64 = durl.split(",", 1)
+                    ext = meta.split("/", 1)[-1].split(";", 1)[0]
+                    tex_bytes[fname] = (ext or "png", base64.b64decode(b64))
+            out.append({
+                "part_id": p["part_id"],
+                "bone": p["bone"],
+                "transform": p["transform"],
+                "mesh": p["mesh"],
+                "materials": p["materials"],
+                "textures": tex_bytes,
+            })
+        return out
 
     def render_skeleton3d(self, species_id: str, *, yaw: float = 0, pitch: float = 0,
                           dist: float = 1.0, pan_x: float = 0, pan_y: float = 0,

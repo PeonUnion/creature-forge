@@ -33,8 +33,9 @@ creatureforge/
         skin_params.json      ← 皮肤参数 schema（skin_tone / fat / muscle）+ 默认材质
   presets/                    ← 预设（物种实例：体型 + 动作幅度）
     <preset_id>.json          ← {species, body, actions}（schema 由物种派生，不落盘）
-  skins/                      ← 皮肤（物种实例：材质 + 皮肤参数，可多实例）
-    <skin_id>.json            ← {species, materials, params}（schema 由物种 skin_params 派生）
+  skins/                      ← 皮肤（基于预设的实例：基底材质/参数 + 部件集合，可多实例）
+    <skin_id>.json            ← {preset, materials, params, parts}（schema 由预设物种 skin_params 派生）
+    assets/<skin_id>/<part>/  ← 部件资产（画师上传的网格 .glb/.obj/.json + 贴图图片）
   web/                        ← Vue 3 前端（物种 / 预设 / 皮肤 独立入口）
 scripts/
   mocap/                      ← CMU 动捕工具链（bvh_parser / rebuild_skeleton_cmu / ...）
@@ -53,10 +54,10 @@ prototype/                    ← Godot 4.7 demo（保留）
 | `GET /api/presets/new?species=` | 新建空白表单（含 schema） |
 | `GET/POST/PUT/DELETE /api/presets...` | 预设 CRUD |
 | `GET /api/skins` | 皮肤列表 |
-| `GET /api/skins/new?species=` | 新建空白皮肤表单（含 schema） |
-| `GET/POST/PUT/DELETE /api/skins...` | 皮肤 CRUD |
-| `GET /api/skin3d/data` | 蒙皮数据（网格 + 帧 + trs + 权重 + 绑定姿态） |
-| `GET /api/skin3d/materials` | 材质列表 |
+| `GET /api/skins/new?preset=` | 新建空白皮肤表单（基于预设，含 schema） |
+| `GET/POST/PUT/DELETE /api/skins...` | 皮肤 CRUD + 部件 CRUD（`<id>/parts...`）+ 部件上传（`<id>/parts/<p>/mesh|texture`） |
+| `GET /api/skin3d/<action>` | 蒙皮数据（网格 + 帧 + trs + 权重 + 绑定姿态 + 部件） |
+| `GET /api/skin3d/export/<action>?preset=&skin_id=` | 导出 .glb（基底 + 部件 + 动作动画） |
 | `GET /api/motions3d` | 跨物种动作列表 |
 | `GET /api/skeleton3d/<id>?yaw=45` | 3D 骨架 PNG（支持体型参数） |
 | `GET /api/motion3d/<id>?gif=1` | 3D 动作 PNG / GIF / frames |
@@ -78,9 +79,11 @@ prototype/                    ← Godot 4.7 demo（保留）
 .venv/bin/python -m creatureforge.cli render skeleton human --out skel.png --yaw 45 --body head_scale=1.2
 .venv/bin/python -m creatureforge.cli render motion walk3d --gif --out walk.gif
 .venv/bin/python -m creatureforge.cli render preset m --action walk3d --gif --out walk.gif
-.venv/bin/python -m creatureforge.cli skin new human
-.venv/bin/python -m creatureforge.cli skin create --json '{"skin_id":"s1","species":"human","title":"S1","params":{"fat":0.8}}'
-.venv/bin/python -m creatureforge.cli render skin walk3d --gif --out skin.gif
+.venv/bin/python -m creatureforge.cli skin new model_man
+.venv/bin/python -m creatureforge.cli skin create --json '{"skin_id":"s1","preset":"model_man","title":"S1","params":{"fat":0.8}}'
+.venv/bin/python -m creatureforge.cli skin parts s1
+.venv/bin/python -m creatureforge.cli skin part-add s1 --json '{"part_id":"p_helm","title":"头盔","kind":"bone","bone":"head"}'
+.venv/bin/python -m creatureforge.cli render skin walk3d --preset model_man --skin s1 --out skin.glb
 ```
 
 ## 启动
@@ -128,7 +131,7 @@ python creatureforge/server.py --port 8765
 | 物种 skeleton.json | 拓扑、`fk_tree`、`bones_3d`、约束（`joint_direction`/`rigid_chains`/`symmetry3d`/...） | `species/<id>/skeleton.json` |
 | 默认 default.json | `positions_3d`（3D 体型坐标）、`canvas`（画布/地面/中心） | `species/<id>/default.json` |
 | 预设 | 值（`body` 体型 + `actions` 动作幅度），schema 由物种派生 | `presets/<id>.json` |
-| 皮肤 | 值（`materials` 材质 + `params` 皮肤参数），schema 由物种 `skin_params.json` 派生 | `skins/<id>.json` |
+| 皮肤 | 值（`materials` 材质 + `params` 皮肤参数 + `parts` 部件），schema 由预设物种 `skin_params.json` 派生 | `skins/<id>.json` + `skins/assets/<id>/` |
 | 动作 action | `fk3d`（关节旋转）、`root3d`、`ik3d`、`signals`、`params` | `species/<id>/actions3d/<id>.json` |
 
 **验证也数据驱动**：`verify_motions3d.py` 的检查项（对称对、顺拐对、刚性跟随、脚着地、肘角）全部从骨架 `constraints` 读取，禁止硬编码关节名。

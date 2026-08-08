@@ -140,4 +140,25 @@ export const api = {
 
   /** 删除皮肤 */
   deleteSkin: (id) => raw(`/api/skins/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // -- 皮肤部件（游戏皮肤式：上传画师文件 → 拆解部件 → 附着到骨架） --
+
+  /** 添加部件 */
+  skinPartAdd: (id, part) => raw(`/api/skins/${encodeURIComponent(id)}/parts`, json(part)),
+
+  /** 更新部件（增量 patch） */
+  skinPartUpdate: (id, pid, patch) => raw(`/api/skins/${encodeURIComponent(id)}/parts/${encodeURIComponent(pid)}`, json_put(patch)),
+
+  /** 删除部件 */
+  skinPartDelete: (id, pid) => raw(`/api/skins/${encodeURIComponent(id)}/parts/${encodeURIComponent(pid)}`, { method: 'DELETE' }),
+
+  /** 上传部件网格文件（.glb/.gltf/.obj/.json，base64） */
+  skinPartUploadMesh: (id, pid, filename, dataB64) =>
+    raw(`/api/skins/${encodeURIComponent(id)}/parts/${encodeURIComponent(pid)}/mesh`,
+        json({ filename, data_b64: dataB64 })),
+
+  /** 上传部件贴图（field: albedo/normal/metallicRoughness，base64） */
+  skinPartUploadTexture: (id, pid, field, filename, dataB64) =>
+    raw(`/api/skins/${encodeURIComponent(id)}/parts/${encodeURIComponent(pid)}/texture`,
+        json({ field, filename, data_b64: dataB64 })),
 }

@@ -11,7 +11,10 @@
 - **dev 模式**：后端 `--dev`（CORS + OPTIONS）、前端 `pnpm run dev`（Vite 5173，proxy `/api` → 8765），前后端分离热更新；`pnpm approve-builds --all` 解决 esbuild 构建忽略问题。
 - **3D 相机改造**：轨道相机（预览图拖拽旋转 + 快捷按钮 + 收纳面板），`useOrbitDrag`（isDragging 必须 ref）。
 - **清理过时内容**：packaging / build / webflow 发布链 / 旧参考资产；保留 `prototype/`（Godot demo）、`scripts/mocap/`、`verify_motions3d.py`。
-- **皮肤系统**：`skins.py`（CRUD + schema 派生，值存 `data/skins/<id>.json`，schema 由物种 `skin/skin_params.json` 派生不落盘）；前端独立入口（SkinsView：材质 + 皮肤参数 + 蒙皮预览）；CLI `skin new/create/list/...`；蒙皮数据 `data/species/<id>/skin/`（mesh + weights + skin_params）；LBS 蒙皮 `skeleton3d.skinned_vertices()` + glTF 动画导出（GLTFExporter）。
+- **皮肤系统**：`skins.py`（CRUD + schema 派生，值存 `data/skins/<id>.json`，schema 由预设物种 `skin/skin_params.json` 派生不落盘）；皮肤基于预设（Species → Preset → Skin → 导出）；前端独立入口（SkinsView：材质 + 皮肤参数 + 蒙皮预览）；CLI `skin new/create/list/...`；LBS 蒙皮 `skeleton3d.skinned_vertices()` + glTF 动画导出。
+- **皮肤部件系统（游戏皮肤式）**：皮肤 = 基底 + 部件集合；`skinparts.py`（GLB/glTF/OBJ/JSON 网格解析，PBR 材质 + 内嵌贴图提取，Y-up→Y-down 翻转）；部件上传（`/api/skins/<id>/parts/<p>/mesh|texture`）+ 附着骨架（bone 装饰件：选绑定骨骼 + position/rotation/scale）；`export_glb` 部件作为骨骼子节点（动画跟随）；SkinsView「🧩 部件」tab（上传网格/贴图、选骨骼、调变换、预览）；资产存 `data/skins/assets/<id>/<part>/`。
+- **预设蒙皮闭环**：PresetsView「🧍 蒙皮」tab — 选皮肤+动作 → 蒙皮预览 → 导出 GLB（`/api/skin3d/export`，预设体型/动作 + 皮肤材质/体态/部件）。
+- **导航切换修复**：PresetsView beforeUnmount 引用未定义 `playTimer` 中断路由更新 → 删除残留代码，导航切换正常。
 - **前端动作预览**：`MotionPreview.vue` 封装播放 + 导出 GIF（后端 `gif=1`）。
 - **全量测试**：E2E 11 用例全通过（物种/预设 CRUD、渲染、GIF、相机、多动作预览+过渡段）；CLI 流程化测试 5 用例（`scripts/test_cli.py`，物种/动作/预设/渲染/错误处理，数据隔离 `test-data-cli/`）。
 - **跨平台发布**：pyinstaller 构建嵌入 web 的 `creature-forge-server`/`creature-forge-cli` 二进制；GitHub Actions（`.github/workflows/release.yml`）矩阵产出 Linux/Windows/macOS，`v*` tag 触发（含 `-rc/-beta/-alpha` 预览版）；Release Notes 由 git 历史自动生成（`scripts/gen_changelog.py`，Conventional Commits 分组），无需维护 CHANGELOG。
@@ -21,10 +24,10 @@
 | 路径 | 说明 |
 |---|---|
 | `creatureforge/api.py / interfaces.py / cli.py / server.py` | 统一 Api（CLI+HTTP 共享）+ 薄路由 + CLI |
-| `creatureforge/species.py / presets.py / skins.py / skeleton3d.py / motion.py` | 物种 / 预设 / 皮肤 / 3D 引擎（FK/IK/LBS 蒙皮）/ DSL |
+| `creatureforge/species.py / presets.py / skins.py / skinparts.py / skeleton3d.py / motion.py` | 物种 / 预设 / 皮肤 / 部件解析 / 3D 引擎（FK/IK/LBS 蒙皮）/ DSL |
 | `data/species/human/` | 骨骼 + default（CMU 体型）+ actions3d/（walk/run/jump/crawl/idle 真实动捕）+ skin/（mesh + weights + skin_params） |
 | `data/presets/` | 预设（物种实例：body + actions；运行时用户数据） |
-| `data/skins/` | 皮肤（物种实例：materials + params；运行时用户数据） |
+| `data/skins/` | 皮肤（预设实例：materials + params + parts）+ `assets/<id>/<part>/`（部件网格/贴图） |
 | `creatureforge/web/` | Vue 3 前端（物种 / 预设 / 皮肤 独立入口） |
 | `scripts/mocap/` | CMU 工具链（bvh_parser / rebuild_skeleton_cmu / extract_kin / compare_motion） |
 | `scripts/verify_motions3d.py` | 3D 动作验证（8 项检查，数据驱动） |
@@ -36,9 +39,9 @@
 
 ## 三、下一步（待办）
 
-1. **[P0] 皮肤应用闭环**：皮肤在物种动作预览 / glTF 导出中可选（多皮肤下拉切换 + 应用材质/体态到蒙皮预览与导出）。
-2. **[P1] 皮肤 CLI 用例**：`scripts/test_cli.py` 加 `skin` 流程化用例（数据隔离 test-data-cli/）。
-3. **[P2] E2E 覆盖皮肤**：SkinsView 新建/编辑/保存/删除 + 蒙皮预览断言。
+1. **[P0] 皮肤部件 skinned 蒙皮件**：部件 kind=skinned（带权重 LBS 贴合变形，如紧身衣/头发），并入蒙皮导出。
+2. **[P1] 皮肤 CLI/E2E 用例**：`scripts/test_cli.py` 加 `skin` 流程化用例；E2E 覆盖 SkinsView 部件 tab。
+3. **[P2] 部件贴图应用闭环**：albedo/normal/metallicRoughness 贴图在预览 + GLB 导出完整应用（含 GLB 内嵌贴图提取）。
 4. **[P2] Godot demo 接入 3D 动作**：确认 `prototype/` 消费 `dist/<id>/` 制品的流程（`scripts/build_demo.sh`）。
 5. **[P2] Web 前端**：预设实时预览打磨、多动作切换、物种 default 编辑 UI。
 
