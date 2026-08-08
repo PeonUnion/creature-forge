@@ -2,82 +2,403 @@
   "morph_id": "humanoid",
   "title": "双足人形",
   "description": "双足人形模板（基于 CMU 人体骨架）：躯干 + 双臂 + 双腿，左右对称，T 型绑定姿态。可在此基础上自由增删改。",
-  "tags": ["biped", "humanoid"],
+  "tags": [
+    "biped",
+    "humanoid"
+  ],
   "limb_scheme": "biped",
   "symmetry": true,
   "root": "pelvis",
   "nodes": {
-    "pelvis": { "parent": null, "sym": null },
-    "abdomen": { "parent": "pelvis", "sym": null },
-    "waist": { "parent": "abdomen", "sym": null },
-    "sternum": { "parent": "waist", "sym": null },
-    "chest": { "parent": "sternum", "sym": null },
-    "neck": { "parent": "chest", "sym": null },
-    "head": { "parent": "neck", "sym": null },
-    "clavicle_left": { "parent": "chest", "sym": "clavicle_right" },
-    "clavicle_right": { "parent": "chest", "sym": "clavicle_left" },
-    "shoulder_left": { "parent": "clavicle_left", "sym": "shoulder_right" },
-    "shoulder_right": { "parent": "clavicle_right", "sym": "shoulder_left" },
-    "elbow_left": { "parent": "shoulder_left", "sym": "elbow_right" },
-    "elbow_right": { "parent": "shoulder_right", "sym": "elbow_left" },
-    "wrist_left": { "parent": "elbow_left", "sym": "wrist_right" },
-    "wrist_right": { "parent": "elbow_right", "sym": "wrist_left" },
-    "palm_left": { "parent": "wrist_left", "sym": "palm_right" },
-    "palm_right": { "parent": "wrist_right", "sym": "palm_left" },
-    "hip_left": { "parent": "pelvis", "sym": "hip_right" },
-    "hip_right": { "parent": "pelvis", "sym": "hip_left" },
-    "knee_left": { "parent": "hip_left", "sym": "knee_right" },
-    "knee_right": { "parent": "hip_right", "sym": "knee_left" },
-    "ankle_left": { "parent": "knee_left", "sym": "ankle_right" },
-    "ankle_right": { "parent": "knee_right", "sym": "ankle_left" },
-    "foot_left": { "parent": "ankle_left", "sym": "foot_right" },
-    "foot_right": { "parent": "ankle_right", "sym": "foot_left" }
-  },
-  "chains": {
-    "spine": ["head", "neck", "chest", "sternum", "waist", "abdomen", "pelvis"],
-    "arm_left": ["shoulder_left", "elbow_left", "wrist_left", "palm_left"],
-    "arm_right": ["shoulder_right", "elbow_right", "wrist_right", "palm_right"],
-    "leg_left": ["hip_left", "knee_left", "ankle_left", "foot_left"],
-    "leg_right": ["hip_right", "knee_right", "ankle_right", "foot_right"]
-  },
-  "param_chains": {
-    "head": { "param": "head_scale", "joints": ["head"], "anchor": "neck", "label": "头大小" },
-    "neck": { "param": "neck_length", "joints": ["head"], "anchor": "neck", "label": "脖子长度" },
-    "shoulders": { "param": "shoulder_width", "joints": ["clavicle_left", "clavicle_right", "shoulder_left", "shoulder_right"], "anchor": "chest", "label": "肩宽" },
-    "arms": { "param": "arm_length", "joints": ["elbow_left", "wrist_left", "palm_left", "elbow_right", "wrist_right", "palm_right"], "anchor": "shoulder_left", "label": "臂长" },
-    "legs": { "param": "leg_length", "joints": ["knee_left", "ankle_left", "foot_left", "knee_right", "ankle_right", "foot_right"], "anchor": "hip_left", "label": "腿长" },
-    "torso": { "param": "torso_length", "joints": ["neck", "chest", "sternum", "waist", "abdomen", "pelvis"], "anchor": "pelvis", "label": "躯干长" }
-  },
-  "default_pose": {
-    "canvas": { "width": 960, "height": 600, "floor_y": 470.0 },
-    "head_radius": 12.5,
-    "positions_3d": {
-      "pelvis": [480.0, 227.62, 0.0],
-      "abdomen": [480.0, 211.8, -1.9],
-      "waist": [480.01, 195.97, -3.79],
-      "sternum": [479.59, 180.0, -4.04],
-      "chest": [479.17, 164.02, -4.29],
-      "neck": [480.64, 139.77, -0.68],
-      "head": [479.02, 115.02, -4.05],
-      "clavicle_left": [454.65, 158.1, -9.37],
-      "clavicle_right": [505.35, 158.1, -9.37],
-      "shoulder_left": [430.12, 152.19, -14.45],
-      "shoulder_right": [524.99, 148.18, -10.9],
-      "elbow_left": [353.32, 152.19, -14.45],
-      "elbow_right": [603.92, 148.18, -10.9],
-      "wrist_left": [297.42, 152.19, -14.45],
-      "wrist_right": [659.98, 148.18, -10.9],
-      "palm_left": [289.53, 152.19, -14.45],
-      "palm_right": [671.11, 148.18, -10.9],
-      "hip_left": [456.55, 253.95, 10.93],
-      "hip_right": [502.25, 253.95, 10.93],
-      "knee_left": [420.69, 352.47, 10.93],
-      "knee_right": [538.56, 353.72, 10.93],
-      "ankle_left": [381.02, 461.45, 10.93],
-      "ankle_right": [577.75, 461.39, 10.93],
-      "foot_left": [379.31, 466.15, 28.35],
-      "foot_right": [579.87, 467.2, 29.12]
+    "pelvis": {
+      "parent": null,
+      "sym": null
+    },
+    "abdomen": {
+      "parent": "pelvis",
+      "sym": null
+    },
+    "waist": {
+      "parent": "abdomen",
+      "sym": null
+    },
+    "sternum": {
+      "parent": "waist",
+      "sym": null
+    },
+    "chest": {
+      "parent": "sternum",
+      "sym": null
+    },
+    "neck": {
+      "parent": "chest",
+      "sym": null
+    },
+    "head": {
+      "parent": "neck",
+      "sym": null
+    },
+    "clavicle_left": {
+      "parent": "chest",
+      "sym": "clavicle_right"
+    },
+    "clavicle_right": {
+      "parent": "chest",
+      "sym": "clavicle_left"
+    },
+    "shoulder_left": {
+      "parent": "clavicle_left",
+      "sym": "shoulder_right"
+    },
+    "shoulder_right": {
+      "parent": "clavicle_right",
+      "sym": "shoulder_left"
+    },
+    "elbow_left": {
+      "parent": "shoulder_left",
+      "sym": "elbow_right"
+    },
+    "elbow_right": {
+      "parent": "shoulder_right",
+      "sym": "elbow_left"
+    },
+    "wrist_left": {
+      "parent": "elbow_left",
+      "sym": "wrist_right"
+    },
+    "wrist_right": {
+      "parent": "elbow_right",
+      "sym": "wrist_left"
+    },
+    "palm_left": {
+      "parent": "wrist_left",
+      "sym": "palm_right"
+    },
+    "palm_right": {
+      "parent": "wrist_right",
+      "sym": "palm_left"
+    },
+    "hip_left": {
+      "parent": "pelvis",
+      "sym": "hip_right"
+    },
+    "hip_right": {
+      "parent": "pelvis",
+      "sym": "hip_left"
+    },
+    "knee_left": {
+      "parent": "hip_left",
+      "sym": "knee_right"
+    },
+    "knee_right": {
+      "parent": "hip_right",
+      "sym": "knee_left"
+    },
+    "ankle_left": {
+      "parent": "knee_left",
+      "sym": "ankle_right"
+    },
+    "ankle_right": {
+      "parent": "knee_right",
+      "sym": "ankle_left"
+    },
+    "foot_left": {
+      "parent": "ankle_left",
+      "sym": "foot_right"
+    },
+    "foot_right": {
+      "parent": "ankle_right",
+      "sym": "foot_left"
     }
   },
-  "actions": ["walk3d", "run3d", "jump3d", "idle3d"]
+  "chains": {
+    "spine": [
+      "head",
+      "neck",
+      "chest",
+      "sternum",
+      "waist",
+      "abdomen",
+      "pelvis"
+    ],
+    "arm_left": [
+      "shoulder_left",
+      "elbow_left",
+      "wrist_left",
+      "palm_left"
+    ],
+    "arm_right": [
+      "shoulder_right",
+      "elbow_right",
+      "wrist_right",
+      "palm_right"
+    ],
+    "leg_left": [
+      "hip_left",
+      "knee_left",
+      "ankle_left",
+      "foot_left"
+    ],
+    "leg_right": [
+      "hip_right",
+      "knee_right",
+      "ankle_right",
+      "foot_right"
+    ]
+  },
+  "param_chains": {
+    "head": {
+      "param": "head_scale",
+      "joints": [
+        "head"
+      ],
+      "anchor": "neck",
+      "label": "头大小",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
+    },
+    "neck": {
+      "param": "neck_length",
+      "joints": [
+        "head"
+      ],
+      "anchor": "neck",
+      "label": "脖子长度",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
+    },
+    "shoulders": {
+      "param": "shoulder_width",
+      "joints": [
+        "clavicle_left",
+        "clavicle_right",
+        "shoulder_left",
+        "shoulder_right"
+      ],
+      "anchor": "chest",
+      "label": "肩宽",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
+    },
+    "arms": {
+      "param": "arm_length",
+      "joints": [
+        "elbow_left",
+        "wrist_left",
+        "palm_left",
+        "elbow_right",
+        "wrist_right",
+        "palm_right"
+      ],
+      "anchor": "shoulder_left",
+      "label": "臂长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
+    },
+    "legs": {
+      "param": "leg_length",
+      "joints": [
+        "knee_left",
+        "ankle_left",
+        "foot_left",
+        "knee_right",
+        "ankle_right",
+        "foot_right"
+      ],
+      "anchor": "hip_left",
+      "label": "腿长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
+    },
+    "torso": {
+      "param": "torso_length",
+      "joints": [
+        "neck",
+        "chest",
+        "sternum",
+        "waist",
+        "abdomen",
+        "pelvis"
+      ],
+      "anchor": "pelvis",
+      "label": "躯干长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
+    },
+    "overall": {
+      "param": "overall_scale",
+      "global": "all",
+      "joints": [],
+      "anchor": "center",
+      "label": "整体大小",
+      "min": 0.5,
+      "max": 2.0,
+      "step": 0.05,
+      "default": 1.0
+    },
+    "height": {
+      "param": "height",
+      "global": "y",
+      "joints": [],
+      "anchor": "floor",
+      "label": "身高",
+      "min": 0.5,
+      "max": 1.5,
+      "step": 0.05,
+      "default": 1.0
+    }
+  },
+  "default_pose": {
+    "canvas": {
+      "width": 960,
+      "height": 600,
+      "floor_y": 470.0
+    },
+    "head_radius": 12.5,
+    "positions_3d": {
+      "pelvis": [
+        480.0,
+        227.62,
+        0.0
+      ],
+      "abdomen": [
+        480.0,
+        211.8,
+        -1.9
+      ],
+      "waist": [
+        480.01,
+        195.97,
+        -3.79
+      ],
+      "sternum": [
+        479.59,
+        180.0,
+        -4.04
+      ],
+      "chest": [
+        479.17,
+        164.02,
+        -4.29
+      ],
+      "neck": [
+        480.64,
+        139.77,
+        -0.68
+      ],
+      "head": [
+        479.02,
+        115.02,
+        -4.05
+      ],
+      "clavicle_left": [
+        454.65,
+        158.1,
+        -9.37
+      ],
+      "clavicle_right": [
+        505.35,
+        158.1,
+        -9.37
+      ],
+      "shoulder_left": [
+        430.12,
+        152.19,
+        -14.45
+      ],
+      "shoulder_right": [
+        524.99,
+        148.18,
+        -10.9
+      ],
+      "elbow_left": [
+        353.32,
+        152.19,
+        -14.45
+      ],
+      "elbow_right": [
+        603.92,
+        148.18,
+        -10.9
+      ],
+      "wrist_left": [
+        297.42,
+        152.19,
+        -14.45
+      ],
+      "wrist_right": [
+        659.98,
+        148.18,
+        -10.9
+      ],
+      "palm_left": [
+        289.53,
+        152.19,
+        -14.45
+      ],
+      "palm_right": [
+        671.11,
+        148.18,
+        -10.9
+      ],
+      "hip_left": [
+        456.55,
+        253.95,
+        10.93
+      ],
+      "hip_right": [
+        502.25,
+        253.95,
+        10.93
+      ],
+      "knee_left": [
+        420.69,
+        352.47,
+        10.93
+      ],
+      "knee_right": [
+        538.56,
+        353.72,
+        10.93
+      ],
+      "ankle_left": [
+        381.02,
+        461.45,
+        10.93
+      ],
+      "ankle_right": [
+        577.75,
+        461.39,
+        10.93
+      ],
+      "foot_left": [
+        379.31,
+        466.15,
+        28.35
+      ],
+      "foot_right": [
+        579.87,
+        467.2,
+        29.12
+      ]
+    }
+  },
+  "actions": [
+    "walk3d",
+    "run3d",
+    "jump3d",
+    "idle3d"
+  ]
 }

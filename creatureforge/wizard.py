@@ -8,7 +8,7 @@
 #             → 默认姿态（set_pose）→ 体型参数（add_param_chain）→ commit
 # - 草稿：species/<id>/draft.json（未完成暂存）；commit 落盘正式文件
 #   skeleton.json（bones_3d/fk_tree/symmetry3d/chains/param_chains 自动派生）
-#   default.json（positions_3d/canvas/params）+ preset_schema.json（SpeciesService 派生）
+#   default.json（positions_3d/canvas/body 默认值表）+ preset_schema.json（SpeciesService 派生）
 #
 # 引擎兼容：产物字段（joints/bones_3d/fk_tree/chains/constraints/positions_3d）
 # 与现有 build_skeleton_3d / pose_3d / verify_motions3d 一致，任意形态可消费。
@@ -112,15 +112,17 @@ def derive_skeleton(draft: dict) -> dict:
 
 
 def derive_default(draft: dict) -> dict:
-    """从向导草稿派生 default.json（positions_3d/canvas/head_radius + params 派生）。"""
+    """从向导草稿派生 default.json（positions_3d/canvas/head_radius + body 默认值表）。
+
+    参数元数据（label/min/max/step/default）单一来源在骨架 param_chains，
+    default.json 只保留纯默认值表 body，避免元数据双写。
+    """
     dp = draft.get("default", {})
-    params: dict = {}
+    # default.json 只存纯默认值表（body），参数元数据单一来源在骨架 param_chains
+    body: dict = {}
     for cname, pc in (draft.get("param_chains", {}) or {}).items():
         pname = pc.get("param") or cname
-        params[pname] = {
-            "default": 1.0, "min": 0.6, "max": 1.6, "step": 0.05,
-            "label": (pc.get("label") or pname),
-        }
+        body[pname] = float(pc.get("default", 1.0))
     return {
         "schema": "creatureforge_default_v1",
         "species": draft.get("species_id", ""),
@@ -129,7 +131,7 @@ def derive_default(draft: dict) -> dict:
         "head_radius": float(dp.get("head_radius", 12.5)),
         "canvas": dp.get("canvas", {"width": 960, "height": 600, "floor_y": 470.0}),
         "positions_3d": dp.get("positions_3d", {}),
-        "params": params,
+        "body": body,
     }
 
 
@@ -587,7 +589,9 @@ class SpeciesWizard:
         if missing:
             raise KeyError(f"joint not found: {missing}")
         draft.setdefault("param_chains", {})[name] = {
-            "param": name, "joints": list(joints), "anchor": anchor or joints[-1], "label": label or name,
+            "param": name, "joints": list(joints), "anchor": anchor or joints[-1],
+            "label": label or name,
+            "min": 0.6, "max": 1.6, "step": 0.05, "default": 1.0,
         }
         self._save_draft(self._draft_path(species_id), draft)
         return self._view(draft)

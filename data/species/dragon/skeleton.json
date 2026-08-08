@@ -81,7 +81,11 @@
         "tail3"
       ],
       "anchor": "body_mid",
-      "label": "躯干长"
+      "label": "躯干长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "horn_scale": {
       "param": "horn_scale",
@@ -90,7 +94,11 @@
         "horn_r"
       ],
       "anchor": "head",
-      "label": "角大小"
+      "label": "角大小",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "whisker_len": {
       "param": "whisker_len",
@@ -99,7 +107,33 @@
         "whisker_r"
       ],
       "anchor": "head",
-      "label": "须长"
+      "label": "须长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
+    },
+    "overall": {
+      "param": "overall_scale",
+      "global": "all",
+      "joints": [],
+      "anchor": "center",
+      "label": "整体大小",
+      "min": 0.5,
+      "max": 2.0,
+      "step": 0.05,
+      "default": 1.0
+    },
+    "height": {
+      "param": "height",
+      "global": "y",
+      "joints": [],
+      "anchor": "floor",
+      "label": "身高",
+      "min": 0.5,
+      "max": 1.5,
+      "step": 0.05,
+      "default": 1.0
     }
   },
   "bones_3d": [

@@ -70,6 +70,24 @@ def apply_proportions_3d(joints3d: dict[str, list[float]],
             continue
         for c in [c for c in pc.values() if c.get("param") == param]:
             anchor = c.get("anchor")
+            if c.get("global") in ("all", "y"):
+                # 整体尺度参数（作用于所有关节，不依赖 joints 列表）：
+                #   global=all → 绕质心整体 xyz 缩放（如 overall_scale）
+                #   global=y   → 绕脚底（最小 y）纵向缩放（如 height）
+                if out:
+                    if c["global"] == "all":
+                        cx = sum(v[0] for v in out.values()) / len(out)
+                        cy = sum(v[1] for v in out.values()) / len(out)
+                        cz = sum(v[2] for v in out.values()) / len(out)
+                        for j in out:
+                            out[j][0] = cx + (out[j][0] - cx) * scale
+                            out[j][1] = cy + (out[j][1] - cy) * scale
+                            out[j][2] = cz + (out[j][2] - cz) * scale
+                    else:
+                        floor = min(v[1] for v in out.values())
+                        for j in out:
+                            out[j][1] = floor + (out[j][1] - floor) * scale
+                continue
             joints = [j for j in c.get("joints", []) if j in out]
             if not joints:
                 continue

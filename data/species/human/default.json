@@ -9,85 +9,6 @@
     "height": 600,
     "floor_y": 470.0
   },
-  "params": {
-    "head_scale": {
-      "default": 1.0,
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "label": "头大小"
-    },
-    "neck_length": {
-      "default": 1.0,
-      "min": 0.5,
-      "max": 1.5,
-      "step": 0.05,
-      "label": "脖子长度"
-    },
-    "upper_torso_length": {
-      "default": 1.0,
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "label": "上躯干长"
-    },
-    "sternum_length": {
-      "default": 1.0,
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "label": "胸骨长度"
-    },
-    "lower_torso_length": {
-      "default": 1.0,
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "label": "下躯干长"
-    },
-    "shoulder_width": {
-      "default": 1.0,
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "label": "肩宽"
-    },
-    "hip_width": {
-      "default": 1.0,
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "label": "髋宽"
-    },
-    "upper_arm_length": {
-      "default": 1.0,
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "label": "上臂长"
-    },
-    "forearm_length": {
-      "default": 1.0,
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "label": "前臂长"
-    },
-    "thigh_length": {
-      "default": 1.0,
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "label": "大腿长"
-    },
-    "shin_length": {
-      "default": 1.0,
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "label": "小腿长"
-    }
-  },
   "body": {
     "head_scale": 1.0,
     "neck_length": 1.0,
@@ -99,7 +20,9 @@
     "upper_arm_length": 1.0,
     "forearm_length": 1.0,
     "thigh_length": 1.0,
-    "shin_length": 1.0
+    "shin_length": 1.0,
+    "overall_scale": 1.0,
+    "height": 1.0
   },
   "positions_3d": {
     "pelvis": [

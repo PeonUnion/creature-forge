@@ -126,6 +126,20 @@
       "max": 1.6,
       "step": 0.05,
       "label": "小腿长"
+    },
+    "overall_scale": {
+      "default": 1.0,
+      "min": 0.5,
+      "max": 2.0,
+      "step": 0.05,
+      "label": "整体大小"
+    },
+    "height": {
+      "default": 1.0,
+      "min": 0.5,
+      "max": 1.5,
+      "step": 0.05,
+      "label": "身高"
     }
   },
   "canvas": {
@@ -145,6 +159,8 @@
     "upper_arm_length": 1.0,
     "forearm_length": 1.0,
     "thigh_length": 1.0,
-    "shin_length": 1.0
+    "shin_length": 1.0,
+    "overall_scale": 1.0,
+    "height": 1.0
   }
 }

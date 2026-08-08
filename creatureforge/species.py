@@ -92,7 +92,14 @@ class SpeciesService:
             pname = chain.get("param")
             if not pname or pname in params:
                 continue
-            base = {"default": 1.0, "min": 0.6, "max": 1.6, "step": 0.05, "label": pname}
+            # 参数元数据单一来源：骨架 param_chains 链定义（label/min/max/step/default），缺省回退
+            base = {
+                "default": chain.get("default", 1.0),
+                "min": chain.get("min", 0.6),
+                "max": chain.get("max", 1.6),
+                "step": chain.get("step", 0.05),
+                "label": chain.get("label") or pname,
+            }
             base.update(old.get(pname, {}))
             params[pname] = base
         return {
@@ -107,7 +114,7 @@ class SpeciesService:
             "params": params,
             "canvas": {"width": 960, "height": 600, "floor_y": 470},
             "head_radius": 24,
-            "body_default": {k: 1.0 for k in params},
+            "body_default": {k: v["default"] for k, v in params.items()},
         }
 
     def _write_preset_schema(self, species_id: str, skel: dict) -> None:

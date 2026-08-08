@@ -9,14 +9,24 @@
         "head"
       ],
       "param": "head_scale",
-      "anchor": "bottom"
+      "anchor": "bottom",
+      "label": "头大小",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "neck": {
       "joints": [
         "head"
       ],
       "param": "neck_length",
-      "anchor": "neck"
+      "anchor": "neck",
+      "label": "脖子长度",
+      "min": 0.5,
+      "max": 1.5,
+      "step": 0.05,
+      "default": 1.0
     },
     "upper_torso": {
       "joints": [
@@ -26,14 +36,24 @@
         "waist"
       ],
       "param": "upper_torso_length",
-      "anchor": "waist"
+      "anchor": "waist",
+      "label": "上躯干长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "sternum": {
       "joints": [
         "sternum"
       ],
       "param": "sternum_length",
-      "anchor": "chest"
+      "anchor": "chest",
+      "label": "胸骨长度",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "lower_torso": {
       "joints": [
@@ -42,7 +62,12 @@
         "pelvis"
       ],
       "param": "lower_torso_length",
-      "anchor": "pelvis"
+      "anchor": "pelvis",
+      "label": "下躯干长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "shoulders": {
       "joints": [
@@ -52,7 +77,12 @@
         "clavicle_right"
       ],
       "param": "shoulder_width",
-      "anchor": "center"
+      "anchor": "center",
+      "label": "肩宽",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "hips": {
       "joints": [
@@ -60,7 +90,12 @@
         "hip_right"
       ],
       "param": "hip_width",
-      "anchor": "center"
+      "anchor": "center",
+      "label": "髋宽",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "arm_left": {
       "joints": [
@@ -70,7 +105,12 @@
         "finger_left"
       ],
       "param": "upper_arm_length",
-      "anchor": "shoulder_left"
+      "anchor": "shoulder_left",
+      "label": "上臂长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "forearm_left": {
       "joints": [
@@ -79,7 +119,12 @@
         "finger_left"
       ],
       "param": "forearm_length",
-      "anchor": "elbow_left"
+      "anchor": "elbow_left",
+      "label": "前臂长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "arm_right": {
       "joints": [
@@ -89,7 +134,12 @@
         "finger_right"
       ],
       "param": "upper_arm_length",
-      "anchor": "shoulder_right"
+      "anchor": "shoulder_right",
+      "label": "上臂长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "forearm_right": {
       "joints": [
@@ -98,7 +148,12 @@
         "finger_right"
       ],
       "param": "forearm_length",
-      "anchor": "elbow_right"
+      "anchor": "elbow_right",
+      "label": "前臂长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "thigh_left": {
       "joints": [
@@ -109,7 +164,12 @@
         "toe_left"
       ],
       "param": "thigh_length",
-      "anchor": "hip_left"
+      "anchor": "hip_left",
+      "label": "大腿长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "shin_left": {
       "joints": [
@@ -119,7 +179,12 @@
         "toe_left"
       ],
       "param": "shin_length",
-      "anchor": "knee_left"
+      "anchor": "knee_left",
+      "label": "小腿长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "thigh_right": {
       "joints": [
@@ -130,7 +195,12 @@
         "toe_right"
       ],
       "param": "thigh_length",
-      "anchor": "hip_right"
+      "anchor": "hip_right",
+      "label": "大腿长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
     },
     "shin_right": {
       "joints": [
@@ -140,7 +210,34 @@
         "toe_right"
       ],
       "param": "shin_length",
-      "anchor": "knee_right"
+      "anchor": "knee_right",
+      "label": "小腿长",
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "default": 1.0
+    },
+    "overall": {
+      "param": "overall_scale",
+      "global": "all",
+      "joints": [],
+      "anchor": "center",
+      "label": "整体大小",
+      "min": 0.5,
+      "max": 2.0,
+      "step": 0.05,
+      "default": 1.0
+    },
+    "height": {
+      "param": "height",
+      "global": "y",
+      "joints": [],
+      "anchor": "floor",
+      "label": "身高",
+      "min": 0.5,
+      "max": 1.5,
+      "step": 0.05,
+      "default": 1.0
     }
   },
   "joints": {
