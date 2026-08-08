@@ -32,8 +32,9 @@ const props = defineProps({
   frames: { type: Array, default: () => [] },    // 动作帧：每帧 joints（WebGL 动画）
   fps: { type: Number, default: 6 },
   highlight: { type: String, default: '' },      // 高亮关节（含其后代子树），''=无
+  editable: { type: Boolean, default: false },   // 编辑模式：可按住高亮关节拖拽平移
 })
-const emit = defineEmits(['ready', 'view', 'pick'])
+const emit = defineEmits(['ready', 'view', 'pick', 'dragend'])
 
 const hasFrames = computed(() => props.frames && props.frames.length > 0)
 const mountEl = ref(null)
@@ -45,6 +46,8 @@ let bonesGeo = null
 let bonesLineHi = null
 let bonesGeoHi = null
 let hiSet = new Set()              // 当前高亮关节集合（选中关节 + 后代）
+let dragging = null                // 拖拽中：{ name, lastX, lastY }
+let dragAcc = { dx: 0, dy: 0, dz: 0 }
 let rafId = null, resizeObs = null
 let fitDist = 300, fitTarget = new THREE.Vector3()
 
@@ -78,10 +81,39 @@ function init() {
   controls.staticMoving = true
   controls.addEventListener('change', () => renderer.render(scene, camera))
 
-  // 拖拽结束 → 同步相机角度；未拖拽（点击）→ 拾取关节球 emit('pick')
+  // 拖拽编辑 / 视角旋转 / 点击拾取 三合一：
+  //   - editable && 按住高亮关节 → 拖拽平移该关节（禁用视角旋转）
+  //   - 未拖拽的短点击 → 拾取关节 emit('pick')
+  //   - 拖拽视角 → 结束 emit('view')
   let pointerDown = false, downX = 0, downY = 0
-  renderer.domElement.addEventListener('pointerdown', (e) => { pointerDown = true; downX = e.clientX; downY = e.clientY })
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    pointerDown = true; downX = e.clientX; downY = e.clientY
+    if (props.editable && props.highlight && hitJoint(e) === props.highlight) {
+      dragging = { name: props.highlight, lastX: e.clientX, lastY: e.clientY }
+      dragAcc = { dx: 0, dy: 0, dz: 0 }
+      controls.enabled = false            // 拖拽期间禁止手办旋转
+      renderer.domElement.style.cursor = 'grabbing'
+    }
+  })
+  renderer.domElement.addEventListener('pointermove', (e) => {
+    if (!dragging) return
+    const dxPx = e.clientX - dragging.lastX
+    const dyPx = e.clientY - dragging.lastY
+    dragging.lastX = e.clientX; dragging.lastY = e.clientY
+    const w = screenToWorld(dxPx, dyPx)
+    dragAcc.dx += w.dx; dragAcc.dy += w.dy; dragAcc.dz += w.dz
+    const mesh = jointsMeshes.get(dragging.name)
+    if (mesh) mesh.position.add(new THREE.Vector3(w.dx, w.dy, w.dz)) // 本地即时视觉
+    renderer.render(scene, camera)
+  })
   renderer.domElement.addEventListener('pointerup', (e) => {
+    if (dragging) {
+      emit('dragend', { name: dragging.name, dx: dragAcc.dx, dy: dragAcc.dy, dz: dragAcc.dz })
+      dragging = null; dragAcc = { dx: 0, dy: 0, dz: 0 }
+      controls.enabled = true
+      renderer.domElement.style.cursor = ''
+      return
+    }
     if (!pointerDown) return
     pointerDown = false
     if (Math.hypot(e.clientX - downX, e.clientY - downY) < 6) pickAt(e)
@@ -194,9 +226,9 @@ function applyHighlight() {
   updateSkeleton(hasFrames.value ? props.frames[frameIndex.value] : props.joints)
 }
 
-/** 点击拾取关节球 → emit('pick', name)（射线到球心距离 + 放宽阈值，小球也好点） */
-function pickAt(e) {
-  if (!renderer || !jointsMeshes.size) return
+/** 命中检测：返回点击/按下处最近的关节名（射线到球心距离 + 放宽阈值，小球也好点中） */
+function hitJoint(e) {
+  if (!renderer || !jointsMeshes.size) return null
   const rect = renderer.domElement.getBoundingClientRect()
   const ndc = new THREE.Vector2(
     ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -213,10 +245,29 @@ function pickAt(e) {
     const d = ray.distanceToPoint(tmp)
     const base = meshBaseScale.get(name) || mesh.scale
     const radius = (mesh.geometry.parameters?.radius || 4) * Math.max(base.x, base.y, base.z)
-    const hitR = Math.max(radius * 2.5, 8) // 放宽拾取半径，小球也好点中
+    const hitR = Math.max(radius * 2.5, 8)
     if (d < hitR && d < bestD) { bestD = d; best = name }
   }
-  if (best) emit('pick', best)
+  return best
+}
+
+/** 点击拾取 → emit('pick', name) */
+function pickAt(e) {
+  const name = hitJoint(e)
+  if (name) emit('pick', name)
+}
+
+/** 屏幕像素位移 → 世界位移（沿相机右/上向量映射，随视角方向移动，符合直觉） */
+function screenToWorld(dxPx, dyPx) {
+  const vh = renderer.domElement.clientHeight || 1
+  const k = (2 * fitDist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / vh
+  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
+  const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
+  return {
+    dx: (right.x * dxPx + up.x * -dyPx) * k,
+    dy: (right.y * dxPx + up.y * -dyPx) * k,
+    dz: (right.z * dxPx + up.z * -dyPx) * k,
+  }
 }
 
 function fitCamera() {

@@ -21,15 +21,60 @@
     <div v-if="mode === 'normal'" class="normal-body">
       <el-tabs v-model="sub">
         <el-tab-pane label="🦴 骨架结构" name="skeleton">
-          <p class="hint">关节按父子关系树形展示（根在最前，缩进 = 子级）。每行可直接下拉改父级、改名；可「一键镜像」对称肢（wing_l → wing_r）。</p>
+          <p class="hint">左侧 3D 实时预览：点关节球选中（可按住拖拽移动）；右侧编辑结构（树/父级/改名/镜像）+ 变换（位置 / 旋转角度 / 平移）。</p>
           <div class="wiz-layout">
             <div class="wiz-preview">
               <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
                 :head-radius="12.5" :center="[480, 300, 0]"
-                :highlight="highlightJoint" @pick="onPick" />
+                :highlight="highlightJoint" :editable="true" @pick="onPick" @dragend="onDragEnd" />
               <div v-else class="preview-empty"><p>添加关节后实时显示骨架</p></div>
             </div>
             <div class="wiz-controls">
+              <div class="sec sec-xform">
+                <div class="sec-t xform-head">
+                  <span>变换</span>
+                  <span v-if="selJoint" class="xform-sel">{{ selJoint }}</span>
+                  <el-button v-if="selJoint" size="small" text type="primary" @click="clearSel">清除</el-button>
+                </div>
+                <p v-if="!selJoint" class="hint small">点击 3D 关节球或关节树选中；未选中时旋转/平移作用于整体。</p>
+                <template v-else>
+                  <div class="xform-block">
+                    <div class="xform-t">位置 XYZ（直接设坐标）</div>
+                    <div class="row3">
+                      <el-input-number v-model="xf.pos.x" size="small" :step="5" />
+                      <el-input-number v-model="xf.pos.y" size="small" :step="5" />
+                      <el-input-number v-model="xf.pos.z" size="small" :step="5" />
+                    </div>
+                    <el-button size="small" type="primary" @click="applyPos">设坐标</el-button>
+                  </div>
+                  <div class="xform-block">
+                    <div class="xform-t">旋转（绕该关节，带动子树改朝向）</div>
+                    <div class="row3">
+                      <el-select v-model="xf.axis" size="small" style="width: 64px">
+                        <el-option v-for="a in ['x','y','z']" :key="a" :label="a.toUpperCase()" :value="a" />
+                      </el-select>
+                      <el-input-number v-model="xf.angle" size="small" :step="5" :min="-180" :max="180" />
+                      <el-button size="small" type="primary" @click="applyRotate">旋转</el-button>
+                    </div>
+                    <div class="row3 wrap">
+                      <el-button size="small" @click="rotateAxis(xf.axis, -15)">-15°</el-button>
+                      <el-button size="small" @click="rotateAxis(xf.axis, 15)">+15°</el-button>
+                      <el-button size="small" @click="rotateAxis(xf.axis, -90)">-90°</el-button>
+                      <el-button size="small" @click="rotateAxis(xf.axis, 90)">+90°</el-button>
+                    </div>
+                  </div>
+                  <div class="xform-block">
+                    <div class="xform-t">平移（该关节及其子树）</div>
+                    <div class="row3">
+                      <el-input-number v-model="xf.dx" size="small" :step="5" />
+                      <el-input-number v-model="xf.dy" size="small" :step="5" />
+                      <el-input-number v-model="xf.dz" size="small" :step="5" />
+                      <el-button size="small" type="primary" @click="applyTranslate">平移</el-button>
+                    </div>
+                    <p class="hint small">也可在 3D 预览直接拖拽该关节移动。</p>
+                  </div>
+                </template>
+              </div>
               <div class="sec">
                 <div class="sec-t">新增关节</div>
                 <el-input v-model="nj.name" size="small" placeholder="关节名，如 head / wing_l" />
@@ -253,6 +298,39 @@ const posePlaceholder = computed(() =>
   poseJoint.value && pos3d.value[poseJoint.value]
     ? `当前 ${pos3d.value[poseJoint.value].join(',')}（输入 x,y,z）`
     : 'x,y,z（如 480,300,0）')
+
+// 变换面板（选中关节的位置 / 旋转 / 平移）
+const xf = ref({ axis: 'z', angle: 15, dx: 0, dy: 0, dz: 0, pos: { x: 0, y: 0, z: 0 } })
+watch(selJoint, (name) => {
+  if (name && pos3d.value[name]) {
+    const [x, y, z] = pos3d.value[name]
+    xf.value.pos = { x, y, z }
+  }
+})
+function clearSel() { selJoint.value = ''; hoverJoint.value = '' }
+async function applyPos() {
+  if (!selJoint.value) return
+  const { x, y, z } = xf.value.pos
+  try { await api.wizardPoseSet(props.speciesId, selJoint.value, [x, y, z]); await refresh() }
+  catch (e) { ElMessage.error(e.message) }
+}
+async function applyRotate() { await rotateAxis(xf.value.axis, xf.value.angle) }
+async function rotateAxis(axis, angle) {
+  try { await api.wizardRotate(props.speciesId, { axis, angle, joint: selJoint.value || null }); await refresh() }
+  catch (e) { ElMessage.error(e.message) }
+}
+async function applyTranslate() {
+  const { dx, dy, dz } = xf.value
+  try {
+    await api.wizardTranslate(props.speciesId, { dx, dy, dz, joint: selJoint.value || null })
+    xf.value.dx = 0; xf.value.dy = 0; xf.value.dz = 0
+    await refresh()
+  } catch (e) { ElMessage.error(e.message) }
+}
+async function onDragEnd({ name, dx, dy, dz }) {
+  try { await api.wizardTranslate(props.speciesId, { dx, dy, dz, joint: name }); await refresh() }
+  catch (e) { ElMessage.error(e.message) }
+}
 const canvas = ref({ width: 960, height: 600, floor_y: 470 })
 const pcName = ref('')
 const pcJoints = ref('')
@@ -400,13 +478,18 @@ async function save() {
 .crumb-root { color: #909399; } .crumb-sep { color: #c0c4cc; } .crumb-now { font-weight: 600; }
 .mode-tabs { margin-bottom: 8px; }
 .hint { color: #909399; font-size: .82rem; margin: 0 0 12px; }
-.wiz-layout { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+.wiz-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .wiz-layout .full { grid-column: 1 / -1; }
-.wiz-preview { border-radius: 8px; overflow: hidden; border: 1px solid #111827; min-height: 320px; }
-.wiz-controls { display: flex; flex-direction: column; gap: 14px; }
+.wiz-preview { border-radius: 8px; overflow: hidden; border: 1px solid #111827; min-height: 420px; }
+.wiz-controls { display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - 250px); overflow-y: auto; padding-right: 6px; }
 .sec { border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 12px; background: #fafbfc; display: flex; flex-direction: column; gap: 8px; }
 .sec-t { font-size: .78rem; font-weight: 600; color: #606266; }
-.joint-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.sec-xform { background: #f0f7ff; border-color: #c6e2ff; }
+.xform-head { display: flex; align-items: center; gap: 8px; }
+.xform-sel { font-family: monospace; font-size: .8rem; color: #409eff; }
+.xform-block { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; border-top: 1px dashed #d9ecff; }
+.xform-t { font-size: .74rem; color: #606266; }
+.joint-list { max-height: 46vh; min-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .joint-row { display: flex; align-items: center; gap: 6px; font-size: .8rem; padding: 2px 4px; border-radius: 4px; cursor: pointer; }
 .joint-row:hover { background: #f0f2f5; }
 .joint-row.selected { background: #ecf5ff; outline: 1px solid #409eff; }
