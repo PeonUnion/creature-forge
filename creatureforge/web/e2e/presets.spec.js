@@ -48,7 +48,8 @@ test.describe('预设管理（全量 E2E）', () => {
     await page.locator('.preview-controls .el-select__wrapper').first().click()
     await page.locator('.el-select-dropdown__item', { hasText: 'Walk 3D' }).last()
       .evaluate((el) => el.click())
-    await expect(page.locator('.preview-controls .el-select__selected-item').filter({ hasText: 'Walk 3D' })).toHaveCount(1)
+    // 当前激活 tab（预览）的动作下拉显示选中 Walk 3D（蒙皮 tab 复用 previewAction，需限定可见 tab）
+    await expect(page.locator('.el-tab-pane:visible .preview-controls .el-select__selected-item').filter({ hasText: 'Walk 3D' })).toHaveCount(1)
 
     // 保存 → 列表出现（pid 显示在 .item-id）
     await page.locator('button', { hasText: '保存预设' }).click()
