@@ -16,6 +16,8 @@
 - **预设蒙皮闭环**：PresetsView「🧍 蒙皮」tab — 选皮肤+动作 → 蒙皮预览 → 导出 GLB（`/api/skin3d/export`，预设体型/动作 + 皮肤材质/体态/部件）。
 - **导航切换修复**：PresetsView beforeUnmount 引用未定义 `playTimer` 中断路由更新 → 删除残留代码，导航切换正常。
 - **物种分步向导（阶段 A）**：`wizard.py`（模板系统 + 骨架结构操作 + 草稿 + commit 派生 skeleton/default/preset_schema）；`data/templates/`（humanoid + custom 从 0 开始，数据驱动可扩展）；**模板可选择、支持从 0 开始构建任意形态**；CLI `species wizard`（交互式）+ `joint-add/rm/rename/parent`、`limb-mirror`、`chain-add/rm`、`pose-set`、`canvas`、`param-add`、`wizard-commit/discard`；前端 SpeciesView「新建物种（向导）」分步（基本信息→选模板/从 0→骨架→姿态→体型参数，3D 预览实时反馈）；「高级 JSON」保留为专家模式；修复 `species_list` joint_count 对映射 joints 的计数 bug。
+- **物种 ToB + 语义化编辑**：SpeciesView 移除左侧列表 → 表格 + 详情页 tabs [骨骼|动作]；`SpeciesSkeletonView`（骨骼页：普通/高级 JSON 双页签共享 draft，files API 同步）、`SpeciesActionsView`（动作页）；CLI `species edit` 交互式 + 分步命令直接作用于已有物种；`wizard.rotate/translate`（姿态快速操作，避免笔直朝天）+ 前端水平化按钮。
+- **预设/皮肤 ToB + 动作语义化**：PresetsView / SkinsView 改为表格 + 详情页（与物种一致）；动作编辑器语义化（基本信息 + 参数表单 + 高级 JSON 双页签共享）；移除「蒙皮」独立入口（皮肤体系保留）。
 - **前端动作预览**：`MotionPreview.vue` 封装播放 + 导出 GIF（后端 `gif=1`）。
 - **全量测试**：E2E 11 用例全通过（物种/预设 CRUD、渲染、GIF、相机、多动作预览+过渡段）；CLI 流程化测试 5 用例（`scripts/test_cli.py`，物种/动作/预设/渲染/错误处理，数据隔离 `test-data-cli/`）。
 - **跨平台发布**：pyinstaller 构建嵌入 web 的 `creature-forge-server`/`creature-forge-cli` 二进制；GitHub Actions（`.github/workflows/release.yml`）矩阵产出 Linux/Windows/macOS，`v*` tag 触发（含 `-rc/-beta/-alpha` 预览版）；Release Notes 由 git 历史自动生成（`scripts/gen_changelog.py`，Conventional Commits 分组），无需维护 CHANGELOG。
@@ -30,7 +32,7 @@
 | `data/species/human/` | 骨骼 + default（CMU 体型）+ actions3d/（walk/run/jump/crawl/idle 真实动捕）+ skin/（mesh + weights + skin_params） |
 | `data/presets/` | 预设（物种实例：body + actions；运行时用户数据） |
 | `data/skins/` | 皮肤（预设实例：materials + params + parts）+ `assets/<id>/<part>/`（部件网格/贴图） |
-| `creatureforge/web/` | Vue 3 前端（物种 / 预设 / 皮肤 独立入口） |
+| `creatureforge/web/` | Vue 3 前端（物种 / 预设 / 皮肤 ToB：表格 + 详情页，普通/高级双页签） |
 | `scripts/mocap/` | CMU 工具链（bvh_parser / rebuild_skeleton_cmu / extract_kin / compare_motion） |
 | `scripts/verify_motions3d.py` | 3D 动作验证（8 项检查，数据驱动） |
 | `scripts/test_cli.py` | CLI 流程化测试（unittest，物种/动作/预设/渲染，数据隔离 test-data-cli/） |
@@ -41,11 +43,11 @@
 
 ## 三、下一步（待办）
 
-1. **[P0] 动作向导（阶段 B）**：`action wizard` — 关键帧姿势 → 插值生成 fk3d 旋转表 + 幅度参数 + 时序/循环；Web + CLI。
+1. **[P0] 动作向导（关键帧插值）**：动作语义化编辑器补关键帧 — 3D 预览摆姿势 → 引擎插值生成 fk3d 旋转表 + 根位移（当前仅基本信息/参数语义化，fk3d 仍靠 JSON/模板）。
 2. **[P1] 幻想生物模板集**：quadruped / dragon / serpent / multi_pod / floating（数据驱动，扩展 `data/templates/`）。
-3. **[P1] 骨架可视化增强**：向导第 3 步关节拖拽摆姿态（当前坐标表单），第 4 步直接拖拽。
-4. **[P1] 皮肤 CLI/E2E 用例**：`scripts/test_cli.py` 加 `skin`/`wizard` 流程化用例；E2E 覆盖向导。
-5. **[P2] 皮肤部件 skinned 蒙皮件**（带权重 LBS 贴合变形）；Godot demo 接入；Web 前端预设实时预览打磨。
+3. **[P1] 骨架可视化增强**：姿态 tab 关节拖拽摆姿势（当前坐标表单 + 旋转/平移快速操作）。
+4. **[P1] 皮肤 CLI/E2E 用例**：`scripts/test_cli.py` 加 `skin`/`wizard` 流程化用例；E2E 覆盖 SkinsView。
+5. **[P2] 皮肤部件 skinned 蒙皮件**（带权重 LBS 贴合变形）；Godot demo 接入；预设实时预览打磨。
 
 ## 四、关键命令
 
