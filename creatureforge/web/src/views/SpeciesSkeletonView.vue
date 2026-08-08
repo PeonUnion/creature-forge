@@ -21,7 +21,7 @@
     <div v-if="mode === 'normal'" class="normal-body">
       <el-tabs v-model="sub">
         <el-tab-pane label="🦴 骨架结构" name="skeleton">
-          <p class="hint">左侧 3D 实时预览：点关节球选中（可按住拖拽移动）；右侧编辑结构（树/父级/改名/镜像）+ 变换（位置 / 旋转角度 / 平移）。</p>
+          <p class="hint">左侧 3D：左键拖关节=移动该关节、拖空白=移动整体，右键=旋转视角，滚轮=缩放；右侧编辑结构（树/父级/改名/镜像）+ 变换（位置 / 旋转角度 / 平移）。</p>
           <div class="wiz-layout">
             <div class="wiz-preview">
               <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
@@ -71,7 +71,7 @@
                       <el-input-number v-model="xf.dz" size="small" :step="5" />
                       <el-button size="small" type="primary" @click="applyTranslate">平移</el-button>
                     </div>
-                    <p class="hint small">也可在 3D 预览直接拖拽该关节移动。</p>
+                    <p class="hint small">也可在 3D 预览直接按住该关节拖拽移动。</p>
                   </div>
                 </template>
               </div>
@@ -125,7 +125,7 @@
             <div class="wiz-preview">
               <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
                 :head-radius="12.5" :center="[480, 300, 0]"
-                :highlight="highlightJoint" @pick="onPickPose" />
+                :highlight="highlightJoint" :editable="true" @pick="onPickPose" @dragend="onDragEnd" />
               <div v-else class="preview-empty"><p>骨架预览</p></div>
             </div>
             <div class="wiz-controls">

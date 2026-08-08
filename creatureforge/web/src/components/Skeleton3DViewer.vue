@@ -81,39 +81,71 @@ function init() {
   controls.staticMoving = true
   controls.addEventListener('change', () => renderer.render(scene, camera))
 
-  // 拖拽编辑 / 视角旋转 / 点击拾取 三合一：
-  //   - editable && 按住高亮关节 → 拖拽平移该关节（禁用视角旋转）
-  //   - 未拖拽的短点击 → 拾取关节 emit('pick')
-  //   - 拖拽视角 → 结束 emit('view')
+  // 编辑模式：左键=编辑模型（我们接管），右键=旋转视角，中键/滚轮=缩放
+  if (props.editable) {
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.PAN,      // 实际被下方左键拖拽接管
+      MIDDLE: THREE.MOUSE.DOLLY,  // 中键缩放
+      RIGHT: THREE.MOUSE.ROTATE,  // 右键旋转视角
+    }
+  }
+
+  // 编辑/查看交互：
+  //   - 编辑模式（editable）：左键拖关节=移动该关节、拖空白=移动整体，右键=旋转视角，中键/滚轮=缩放
+  //   - 查看模式：左键=把玩手办（旋转视角）
+  //   - 短点击（未拖拽）→ 拾取关节 emit('pick')
   let pointerDown = false, downX = 0, downY = 0
+  let downHit = null            // 左键按下处命中的关节（null=空白/整体）
+  let dragArmed = false         // 编辑模式左键按下，等待判定为拖拽
   renderer.domElement.addEventListener('pointerdown', (e) => {
-    pointerDown = true; downX = e.clientX; downY = e.clientY
-    if (props.editable && props.highlight && hitJoint(e) === props.highlight) {
-      dragging = { name: props.highlight, lastX: e.clientX, lastY: e.clientY }
-      dragAcc = { dx: 0, dy: 0, dz: 0 }
-      controls.enabled = false            // 拖拽期间禁止手办旋转
-      renderer.domElement.style.cursor = 'grabbing'
+    pointerDown = e.button === 0
+    downX = e.clientX; downY = e.clientY
+    if (props.editable && e.button === 0) {
+      downHit = hitJoint(e)
+      dragArmed = true
+    } else {
+      downHit = null
+      dragArmed = false
     }
   })
   renderer.domElement.addEventListener('pointermove', (e) => {
+    if (dragArmed && !dragging) {
+      // 编辑模式左键：超过阈值判定为拖拽（关节或整体）
+      if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) {
+        dragging = { name: downHit || null, lastX: e.clientX, lastY: e.clientY }
+        dragAcc = { dx: 0, dy: 0, dz: 0 }
+        controls.enabled = false
+        renderer.domElement.style.cursor = 'grabbing'
+      }
+      return
+    }
     if (!dragging) return
     const dxPx = e.clientX - dragging.lastX
     const dyPx = e.clientY - dragging.lastY
     dragging.lastX = e.clientX; dragging.lastY = e.clientY
     const w = screenToWorld(dxPx, dyPx)
     dragAcc.dx += w.dx; dragAcc.dy += w.dy; dragAcc.dz += w.dz
-    const mesh = jointsMeshes.get(dragging.name)
-    if (mesh) mesh.position.add(new THREE.Vector3(w.dx, w.dy, w.dz)) // 本地即时视觉
+    if (dragging.name) {
+      const mesh = jointsMeshes.get(dragging.name)
+      if (mesh) mesh.position.add(new THREE.Vector3(w.dx, w.dy, w.dz)) // 关节：本地即时视觉
+    } else {
+      skeletonGroup.position.add(new THREE.Vector3(w.dx, w.dy, w.dz)) // 整体：模型+地面跟随
+      if (grid) grid.position.add(new THREE.Vector3(w.dx, w.dy, w.dz))
+    }
     renderer.render(scene, camera)
   })
   renderer.domElement.addEventListener('pointerup', (e) => {
     if (dragging) {
-      emit('dragend', { name: dragging.name, dx: dragAcc.dx, dy: dragAcc.dy, dz: dragAcc.dz })
+      const name = dragging.name
+      emit('dragend', { name, dx: dragAcc.dx, dy: dragAcc.dy, dz: dragAcc.dz })
+      if (name) emit('pick', name)   // 拖拽后即选中该关节（树/面板联动）
       dragging = null; dragAcc = { dx: 0, dy: 0, dz: 0 }
+      dragArmed = false; downHit = null
       controls.enabled = true
       renderer.domElement.style.cursor = ''
       return
     }
+    dragArmed = false; downHit = null
     if (!pointerDown) return
     pointerDown = false
     if (Math.hypot(e.clientX - downX, e.clientY - downY) < 6) pickAt(e)
