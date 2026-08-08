@@ -7,7 +7,9 @@
       </div>
       <div class="head-actions">
         <el-button size="small" @click="emit('back')">返回列表</el-button>
-        <el-button size="small" type="primary" @click="save" :loading="saving" icon="Check">保存骨骼</el-button>
+        <el-button size="small" type="primary" @click="save" :loading="saving" icon="Check">
+          保存骨骼<span v-if="dirty" class="dirty-dot" title="有未保存的姿态修改" />
+        </el-button>
       </div>
     </div>
 
@@ -24,9 +26,20 @@
           <p class="hint">左侧 3D：左键拖关节=移动该关节、拖空白=移动整体，右键=旋转视角，滚轮=缩放；右侧编辑结构（树/父级/改名/镜像）+ 变换（位置 / 旋转角度 / 平移）。</p>
           <div class="wiz-layout">
             <div class="wiz-preview">
+              <div class="edit-plane-bar">
+                <span class="plane-label">编辑</span>
+                <el-radio-group v-model="editPlane" size="small">
+                  <el-radio-button value="xz">(X,Z) 水平</el-radio-button>
+                  <el-radio-button value="yz">(Y,Z) 侧视</el-radio-button>
+                </el-radio-group>
+                <el-switch v-model="snapEnabled" size="small" active-text="网格" inactive-text="自由" />
+                <el-input-number v-model="gridStep" size="small" :min="1" :max="100" :disabled="!snapEnabled" style="width: 96px" />
+                <span class="plane-hint">落点吸附网格交叉点</span>
+              </div>
               <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
                 :head-radius="12.5" :center="[480, 300, 0]"
-                :highlight="highlightJoint" :editable="true" @pick="onPick" @dragend="onDragEnd" />
+                :highlight="highlightJoint" :editable="true" :drag-plane="editPlane"
+                :grid-step="snapEnabled ? gridStep : 0" @pick="onPick" @dragend="onDragEnd" @ready="(a) => (skeletonViewerApi = a)" />
               <div v-else class="preview-empty"><p>添加关节后实时显示骨架</p></div>
             </div>
             <div class="wiz-controls">
@@ -125,7 +138,8 @@
             <div class="wiz-preview">
               <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
                 :head-radius="12.5" :center="[480, 300, 0]"
-                :highlight="highlightJoint" :editable="true" @pick="onPickPose" @dragend="onDragEnd" />
+                :highlight="highlightJoint" :editable="true" :drag-plane="editPlane"
+                :grid-step="snapEnabled ? gridStep : 0" @pick="onPickPose" @dragend="onDragEnd" @ready="(a) => (poseViewerApi = a)" />
               <div v-else class="preview-empty"><p>骨架预览</p></div>
             </div>
             <div class="wiz-controls">
@@ -217,7 +231,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api.js'
 import Skeleton3DViewer from '../components/Skeleton3DViewer.vue'
@@ -228,6 +242,7 @@ const emit = defineEmits(['back', 'saved'])
 const mode = ref('normal')  // normal | advanced
 const sub = ref('skeleton') // skeleton | pose | params
 const saving = ref(false)
+const dirty = ref(false)  // 有未保存的姿态/坐标修改（本地暂存，保存按钮统一提交）
 const wiz = ref(null)
 
 const nodes = computed(() => wiz.value?.nodes || {})
@@ -299,7 +314,53 @@ const posePlaceholder = computed(() =>
     ? `当前 ${pos3d.value[poseJoint.value].join(',')}（输入 x,y,z）`
     : 'x,y,z（如 480,300,0）')
 
-// 变换面板（选中关节的位置 / 旋转 / 平移）
+// -- 姿态本地编辑（暂存内存，点「保存骨骼」才写入草稿并落盘） --
+const r2 = (v) => Math.round(v * 100) / 100
+function subtreeOf(name) {
+  const out = [name]
+  const nds = wiz.value?.nodes || {}
+  for (let i = 0; i < out.length; i++) {
+    const cur = out[i]
+    for (const [n, nd] of Object.entries(nds)) {
+      if (nd?.parent === cur && !out.includes(n)) out.push(n)
+    }
+  }
+  return out
+}
+function localRotate(axis, angle, joint) {
+  if (!wiz.value) return
+  const p = wiz.value.positions_3d ||= {}
+  const names = joint ? subtreeOf(joint) : Object.keys(p)
+  const pts = joint && p[joint] ? [p[joint]] : Object.values(p).filter(Boolean)
+  const cx = pts.reduce((a, b) => a + b[0], 0) / pts.length
+  const cy = pts.reduce((a, b) => a + b[1], 0) / pts.length
+  const cz = pts.reduce((a, b) => a + b[2], 0) / pts.length
+  const rad = angle * Math.PI / 180, c = Math.cos(rad), s = Math.sin(rad)
+  for (const n of names) {
+    if (!p[n]) continue
+    const [x, y, z] = p[n]
+    const dx = x - cx, dy = y - cy, dz = z - cz
+    let nx = x, ny = y, nz = z
+    if (axis === 'z') { nx = dx * c - dy * s + cx; ny = dx * s + dy * c + cy }
+    else if (axis === 'y') { nx = dx * c + dz * s + cx; nz = -dx * s + dz * c + cz }
+    else if (axis === 'x') { ny = dy * c - dz * s + cy; nz = dy * s + dz * c + cz }
+    p[n] = [r2(nx), r2(ny), r2(nz)]
+  }
+  if (joint && p[joint]) { const [x, y, z] = p[joint]; xf.value.pos = { x, y, z } }
+  dirty.value = true
+}
+function localTranslate(dx, dy, dz, joint) {
+  if (!wiz.value) return
+  const p = wiz.value.positions_3d ||= {}
+  const names = joint ? subtreeOf(joint) : Object.keys(p)
+  for (const n of names) if (p[n]) p[n] = [r2(p[n][0] + dx), r2(p[n][1] + dy), r2(p[n][2] + dz)]
+  if (joint && joint === selJoint.value && p[joint]) {
+    const [x, y, z] = p[joint]; xf.value.pos = { x, y, z }
+  }
+  dirty.value = true
+}
+
+// -- 变换面板（选中关节的位置 / 旋转 / 平移） --
 const xf = ref({ axis: 'z', angle: 15, dx: 0, dy: 0, dz: 0, pos: { x: 0, y: 0, z: 0 } })
 watch(selJoint, (name) => {
   if (name && pos3d.value[name]) {
@@ -308,28 +369,62 @@ watch(selJoint, (name) => {
   }
 })
 function clearSel() { selJoint.value = ''; hoverJoint.value = '' }
-async function applyPos() {
-  if (!selJoint.value) return
+function applyPos() {
+  if (!selJoint.value || !wiz.value) return
   const { x, y, z } = xf.value.pos
-  try { await api.wizardPoseSet(props.speciesId, selJoint.value, [x, y, z]); await refresh() }
-  catch (e) { ElMessage.error(e.message) }
+  wiz.value.positions_3d ||= {}
+  wiz.value.positions_3d[selJoint.value] = [r2(x), r2(y), r2(z)]
+  dirty.value = true
 }
-async function applyRotate() { await rotateAxis(xf.value.axis, xf.value.angle) }
-async function rotateAxis(axis, angle) {
-  try { await api.wizardRotate(props.speciesId, { axis, angle, joint: selJoint.value || null }); await refresh() }
-  catch (e) { ElMessage.error(e.message) }
+function applyRotate() { rotateAxis(xf.value.axis, xf.value.angle) }
+function rotateAxis(axis, angle) { localRotate(axis, angle, selJoint.value || null) }
+function applyTranslate() {
+  localTranslate(xf.value.dx, xf.value.dy, xf.value.dz, selJoint.value || null)
+  xf.value.dx = 0; xf.value.dy = 0; xf.value.dz = 0
 }
-async function applyTranslate() {
-  const { dx, dy, dz } = xf.value
-  try {
-    await api.wizardTranslate(props.speciesId, { dx, dy, dz, joint: selJoint.value || null })
-    xf.value.dx = 0; xf.value.dy = 0; xf.value.dz = 0
-    await refresh()
-  } catch (e) { ElMessage.error(e.message) }
+function onDragEnd({ name, dx, dy, dz }) {
+  if (!wiz.value) return
+  const p = wiz.value.positions_3d ||= {}
+  if (name) {
+    if (p[name]) p[name] = [r2(p[name][0] + dx), r2(p[name][1] + dy), r2(p[name][2] + dz)]
+  } else {
+    for (const k of Object.keys(p)) if (p[k]) p[k] = [r2(p[k][0] + dx), r2(p[k][1] + dy), r2(p[k][2] + dz)]
+  }
+  if (name && selJoint.value === name && p[name]) {
+    const [x, y, z] = p[name]; xf.value.pos = { x, y, z }
+  }
+  dirty.value = true
 }
-async function onDragEnd({ name, dx, dy, dz }) {
-  try { await api.wizardTranslate(props.speciesId, { dx, dy, dz, joint: name }); await refresh() }
-  catch (e) { ElMessage.error(e.message) }
+// 编辑平面与网格吸附
+const editPlane = ref('xz')      // xz=水平 / yz=侧视
+const snapEnabled = ref(true)    // 网格吸附开关
+const gridStep = ref(5)          // 网格精度（落点吸附步长）
+const skeletonViewerApi = ref(null)
+const poseViewerApi = ref(null)
+// 切换编辑平面 → 相机对齐为 2D 视角（xz=俯视 / yz=侧视）
+watch(editPlane, (pl) => {
+  const cfg = pl === 'yz' ? { yaw: 90, pitch: 0 } : { yaw: 0, pitch: 90 }
+  skeletonViewerApi.value?.setView(cfg.yaw, cfg.pitch, 1)
+  poseViewerApi.value?.setView(cfg.yaw, cfg.pitch, 1)
+})
+// 方向键微调移动选中关节（按当前编辑平面解释方向，步长=网格精度）
+function onKeyMove(e) {
+  if (mode.value !== 'normal' || (sub.value !== 'skeleton' && sub.value !== 'pose')) return
+  if (!selJoint.value) return
+  const t = e.target
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+  const step = snapEnabled.value ? gridStep.value : 5
+  const pl = editPlane.value
+  let dx = 0, dy = 0, dz = 0
+  switch (e.key) {
+    case 'ArrowLeft': pl === 'yz' ? (dz = -step) : (dx = -step); break
+    case 'ArrowRight': pl === 'yz' ? (dz = step) : (dx = step); break
+    case 'ArrowUp': pl === 'yz' ? (dy = -step) : (dz = step); break
+    case 'ArrowDown': pl === 'yz' ? (dy = step) : (dz = -step); break
+    default: return
+  }
+  e.preventDefault()
+  localTranslate(dx, dy, dz, selJoint.value)
 }
 const canvas = ref({ width: 960, height: 600, floor_y: 470 })
 const pcName = ref('')
@@ -341,7 +436,10 @@ const skeletonJson = ref('')
 const defaultJson = ref('')
 
 async function refresh() {
+  // 有未保存的姿态修改时，保留本地坐标（结构类操作 refresh 不会冲掉拖拽结果）
+  const localPos = dirty.value && wiz.value ? { ...(wiz.value.positions_3d || {}) } : null
   wiz.value = await api.wizardGet(props.speciesId)
+  if (localPos) wiz.value.positions_3d = { ...(wiz.value.positions_3d || {}), ...localPos }
   canvas.value = { ...(wiz.value?.canvas || { width: 960, height: 600, floor_y: 470 }) }
 }
 
@@ -360,13 +458,18 @@ async function applyFiles() {
   try {
     await api.wizardSaveFiles(props.speciesId, sk, df)
     ElMessage.success('已应用 JSON，普通模式已同步')
+    dirty.value = false   // JSON 已覆盖草稿，本地姿态随 JSON 为准
     await refresh()
   } catch (e) { ElMessage.error(e.message) }
 }
 
 watch(mode, (m) => { if (m === 'advanced') loadFiles() })
 
-onMounted(async () => { await refresh() })
+onMounted(async () => {
+  await refresh()
+  window.addEventListener('keydown', onKeyMove)
+})
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeyMove))
 
 // -- 骨架结构 --
 async function addJoint() {
@@ -417,33 +520,19 @@ async function addChain() {
   try { await api.wizardChainAdd(props.speciesId, name, joints); chainName.value = ''; chainJoints.value = ''; await refresh() }
   catch (e) { ElMessage.error(e.message) }
 }
-// -- 姿态 --
-async function setPose() {
+// -- 姿态（默认姿态 tab 快速操作，同样本地暂存） --
+function setPose() {
   if (!poseJoint.value) { ElMessage.warning('先选关节'); return }
   const pos = poseStr.value.split(',').map(Number)
   if (pos.length !== 3 || pos.some(isNaN)) { ElMessage.warning('坐标格式：x,y,z'); return }
-  try { await api.wizardPoseSet(props.speciesId, poseJoint.value, pos); await refresh() }
-  catch (e) { ElMessage.error(e.message) }
+  if (!wiz.value) return
+  wiz.value.positions_3d ||= {}
+  wiz.value.positions_3d[poseJoint.value] = [r2(pos[0]), r2(pos[1]), r2(pos[2])]
+  dirty.value = true
 }
-async function rotate(axis, angle) {
-  try {
-    await api.wizardRotate(props.speciesId, { axis, angle, joint: rotJoint.value || null })
-    await refresh()
-  } catch (e) { ElMessage.error(e.message) }
-}
-async function horizontalize() {
-  try {
-    // 竖直姿态 → 水平：绕 Z 轴 90°（把 Y 方向主轴转成 X 方向），整体
-    await api.wizardRotate(props.speciesId, { axis: 'z', angle: 90, joint: null })
-    await refresh()
-  } catch (e) { ElMessage.error(e.message) }
-}
-async function translate(dx, dy, dz) {
-  try {
-    await api.wizardTranslate(props.speciesId, { dx, dy, dz, joint: rotJoint.value || null })
-    await refresh()
-  } catch (e) { ElMessage.error(e.message) }
-}
+function rotate(axis, angle) { localRotate(axis, angle, rotJoint.value || null) }
+function horizontalize() { localRotate('z', 90, null) }
+function translate(dx, dy, dz) { localTranslate(dx, dy, dz, rotJoint.value || null) }
 async function setCanvas() {
   try { await api.wizardCanvas(props.speciesId, { ...canvas.value }); ElMessage.success('画布已保存') }
   catch (e) { ElMessage.error(e.message) }
@@ -463,7 +552,10 @@ async function addParam() {
 async function save() {
   saving.value = true
   try {
+    // 先批量写入草稿（仅当有未保存姿态修改），再落盘正式文件
+    if (dirty.value) await api.wizardPoseApply(props.speciesId, wiz.value?.positions_3d || {})
     await api.wizardCommit(props.speciesId)
+    dirty.value = false
     ElMessage.success('骨骼已保存')
     emit('saved')
   } catch (e) { ElMessage.error('保存失败: ' + e.message) }
@@ -478,6 +570,10 @@ async function save() {
 .crumb-root { color: #909399; } .crumb-sep { color: #c0c4cc; } .crumb-now { font-weight: 600; }
 .mode-tabs { margin-bottom: 8px; }
 .hint { color: #909399; font-size: .82rem; margin: 0 0 12px; }
+.dirty-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f56c6c; margin-left: 6px; vertical-align: middle; }
+.edit-plane-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #f7f9fc; border-bottom: 1px solid #ebeef5; flex-wrap: wrap; }
+.plane-label { font-size: .76rem; color: #606266; font-weight: 600; }
+.plane-hint { font-size: .72rem; color: #909399; margin-left: auto; }
 .wiz-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .wiz-layout .full { grid-column: 1 / -1; }
 .wiz-preview { border-radius: 8px; overflow: hidden; border: 1px solid #111827; min-height: 420px; }

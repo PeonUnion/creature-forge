@@ -32,7 +32,9 @@ const props = defineProps({
   frames: { type: Array, default: () => [] },    // 动作帧：每帧 joints（WebGL 动画）
   fps: { type: Number, default: 6 },
   highlight: { type: String, default: '' },      // 高亮关节（含其后代子树），''=无
-  editable: { type: Boolean, default: false },   // 编辑模式：可按住高亮关节拖拽平移
+  editable: { type: Boolean, default: false },   // 编辑模式：可按住关节/空白拖拽编辑
+  dragPlane: { type: String, default: 'xz' },    // 编辑平面锁定：'xz'=水平(y不变) / 'yz'=侧视(x不变)
+  gridStep: { type: Number, default: 0 },        // 网格吸附步长：>0 显示编辑网格并吸附交叉点，0=自由
 })
 const emit = defineEmits(['ready', 'view', 'pick', 'dragend'])
 
@@ -45,9 +47,13 @@ let bonesLine = null
 let bonesGeo = null
 let bonesLineHi = null
 let bonesGeoHi = null
+let editGrid = null             // 编辑锁定平面网格（吸附参考，绿色）
 let hiSet = new Set()              // 当前高亮关节集合（选中关节 + 后代）
 let dragging = null                // 拖拽中：{ name, lastX, lastY }
 let dragAcc = { dx: 0, dy: 0, dz: 0 }
+let dragPrev = null                // 拖拽上一次射线交点（整体平移增量基准）
+let dragBaseWorld = null           // 拖拽平面基准点（关节初始世界 / 整体=模型中心）
+let dragBaseLocal = null           // 拖拽关节的初始局部坐标
 let rafId = null, resizeObs = null
 let fitDist = 300, fitTarget = new THREE.Vector3()
 
@@ -114,23 +120,68 @@ function init() {
       if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) {
         dragging = { name: downHit || null, lastX: e.clientX, lastY: e.clientY }
         dragAcc = { dx: 0, dy: 0, dz: 0 }
+        dragPrev = null
+        if (downHit) {
+          const mesh = jointsMeshes.get(downHit)
+          if (mesh) {
+            dragBaseLocal = mesh.position.clone()
+            dragBaseWorld = mesh.getWorldPosition(new THREE.Vector3()).clone()
+          }
+        } else {
+          dragBaseLocal = null
+          dragBaseWorld = controls.target.clone()   // 整体：以模型中心为平面基准
+        }
         controls.enabled = false
         renderer.domElement.style.cursor = 'grabbing'
       }
       return
     }
     if (!dragging) return
-    const dxPx = e.clientX - dragging.lastX
-    const dyPx = e.clientY - dragging.lastY
-    dragging.lastX = e.clientX; dragging.lastY = e.clientY
-    const w = screenToWorld(dxPx, dyPx)
-    dragAcc.dx += w.dx; dragAcc.dy += w.dy; dragAcc.dz += w.dz
+    // 精确落点：鼠标射线 ∩ 编辑锁定平面（xz=水平 / yz=侧视，2D 平面内精确编辑）
+    const rect = renderer.domElement.getBoundingClientRect()
+    const ndc = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    )
+    const raycaster = new THREE.Raycaster()
+    raycaster.setFromCamera(ndc, camera)
+    const lockNormal = props.dragPlane === 'yz'
+      ? new THREE.Vector3(1, 0, 0)   // yz：法线 x 轴，x 保持不变
+      : new THREE.Vector3(0, 1, 0)   // xz：法线 y 轴，y 保持不变
+    const pt = new THREE.Vector3()
+    const got = raycaster.ray.intersectPlane(
+      new THREE.Plane().setFromNormalAndCoplanarPoint(lockNormal, dragBaseWorld), pt)
+    if (!got) {
+      // 射线平行于锁定平面（相机从法线方向看）→ 回退到相机垂直平面
+      const fallback = new THREE.Plane().setFromNormalAndCoplanarPoint(
+        camera.getWorldDirection(new THREE.Vector3()), dragBaseWorld)
+      if (!raycaster.ray.intersectPlane(fallback, pt)) return
+    }
+    // 网格吸附：自由轴取整到 gridStep 倍数，锁定轴保持不变（落点仅落网格交叉点）
+    if (props.gridStep > 0) {
+      const s = props.gridStep
+      if (props.dragPlane === 'yz') {
+        pt.y = Math.round(pt.y / s) * s; pt.z = Math.round(pt.z / s) * s; pt.x = dragBaseWorld.x
+      } else {
+        pt.x = Math.round(pt.x / s) * s; pt.z = Math.round(pt.z / s) * s; pt.y = dragBaseWorld.y
+      }
+    }
     if (dragging.name) {
-      const mesh = jointsMeshes.get(dragging.name)
-      if (mesh) mesh.position.add(new THREE.Vector3(w.dx, w.dy, w.dz)) // 关节：本地即时视觉
+      // 关节：绝对落点（初始局部 + 世界增量），随鼠标精确移动
+      if (dragBaseLocal && dragBaseWorld) {
+        const delta = pt.clone().sub(dragBaseWorld)
+        const mesh = jointsMeshes.get(dragging.name)
+        if (mesh) mesh.position.copy(dragBaseLocal.clone().add(delta))
+        dragAcc = { dx: delta.x, dy: delta.y, dz: delta.z }
+      }
     } else {
-      skeletonGroup.position.add(new THREE.Vector3(w.dx, w.dy, w.dz)) // 整体：模型+地面跟随
-      if (grid) grid.position.add(new THREE.Vector3(w.dx, w.dy, w.dz))
+      // 整体：增量平移所有关节球 + 地面（dragPrev 首次 = 模型中心）
+      const base = dragPrev || dragBaseWorld
+      const inc = pt.clone().sub(base)
+      dragPrev = pt.clone()
+      for (const [, m] of jointsMeshes) if (m.visible) m.position.add(inc)
+      if (grid) grid.position.add(inc)
+      dragAcc.dx += inc.x; dragAcc.dy += inc.y; dragAcc.dz += inc.z
     }
     renderer.render(scene, camera)
   })
@@ -289,18 +340,7 @@ function pickAt(e) {
   if (name) emit('pick', name)
 }
 
-/** 屏幕像素位移 → 世界位移（沿相机右/上向量映射，随视角方向移动，符合直觉） */
-function screenToWorld(dxPx, dyPx) {
-  const vh = renderer.domElement.clientHeight || 1
-  const k = (2 * fitDist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / vh
-  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
-  const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1)
-  return {
-    dx: (right.x * dxPx + up.x * -dyPx) * k,
-    dy: (right.y * dxPx + up.y * -dyPx) * k,
-    dz: (right.z * dxPx + up.z * -dyPx) * k,
-  }
-}
+/** 屏幕像素位移 → 世界位移（已由拖拽的射线-平面精确求交取代，保留作比例参考） */
 
 function fitCamera() {
   // 所有帧（或静态骨架）包围球 → 相机适配距离 + 目标
@@ -331,6 +371,25 @@ function fitCamera() {
   scene.add(grid)
 
   setView(30, 12, 1)
+  updateEditGrid()
+}
+
+/** 编辑网格（锁定平面上的吸附参考，绿线）；editable && gridStep>0 时显示 */
+function updateEditGrid() {
+  if (editGrid) { scene.remove(editGrid); editGrid = null }
+  if (!props.editable || !(props.gridStep > 0)) return
+  const isXz = props.dragPlane !== 'yz'
+  const size = Math.max(fitDist * 1.6, 80)
+  const div = Math.max(4, Math.round(size / props.gridStep / 2) * 2)
+  editGrid = new THREE.GridHelper(size, div, 0x34d399, 0x115e59)
+  // 网格中心取最近整点（与吸附 round(coord/step)*step 一致）
+  editGrid.position.set(
+    Math.round(fitTarget.x / props.gridStep) * props.gridStep,
+    Math.round(fitTarget.y / props.gridStep) * props.gridStep,
+    Math.round(fitTarget.z / props.gridStep) * props.gridStep,
+  )
+  if (!isXz) editGrid.rotation.y = Math.PI / 2   // 转到 YZ 平面
+  scene.add(editGrid)
 }
 
 /** 从当前相机位置推导 yaw/pitch（拖拽结束同步用） */
@@ -440,16 +499,27 @@ watch(() => props.frames, (f) => {
   }
 }, { deep: true })
 
-// 静态骨架变化（无 frames 时）
-watch(() => props.joints, () => {
+// 静态骨架变化（无 frames 时）：仅位置变化 → 平滑更新并保留视角；结构变化 → 重建适配
+watch(() => props.joints, (now, prev) => {
   if (!scene || hasFrames.value) return
-  buildSkeleton()
-  fitCamera()
-  renderer.render(scene, camera)
+  const sameKeys = prev && Object.keys(now).length === Object.keys(prev).length &&
+    Object.keys(now).every(k => Object.prototype.hasOwnProperty.call(prev, k))
+  if (sameKeys) {
+    updateSkeleton(now)
+    renderer.render(scene, camera)
+  } else {
+    buildSkeleton()
+    fitCamera()
+    renderer.render(scene, camera)
+  }
 }, { deep: true })
 
 // 高亮变化 → 应用高亮（不重建场景）
 watch(() => props.highlight, () => { if (scene) applyHighlight() })
+
+// 编辑平面 / 网格精度变化 → 重建编辑网格
+watch(() => props.dragPlane, () => { if (scene) { updateEditGrid(); renderer.render(scene, camera) } })
+watch(() => props.gridStep, () => { if (scene) { updateEditGrid(); renderer.render(scene, camera) } })
 
 onMounted(init)
 
