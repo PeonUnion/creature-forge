@@ -570,6 +570,63 @@ def skinned_vertices(skel3d: dict, motion3d: dict, index: int, skin: dict,
     return out_flat
 
 
+def _flip_euler(rx: float, ry: float, rz: float) -> list[float]:
+    """Y-down 局部欧拉角 → Y-up 局部欧拉角（同一 Rz·Ry·Rx 约定）。
+
+    glTF/Three.js 为 Y-up：翻转 Y 用相似变换 R' = F·R·F⁻¹（F=diag(1,-1,1)），
+    再按 R' = Rz·Ry·Rx 反解欧拉角。供动画导出使用。
+    """
+    R = _rot_mat(rx, ry, rz)
+    Rf = [R[0][:], R[1][:], R[2][:]]
+    Rf[0][1] = -R[0][1]
+    Rf[1][0] = -R[1][0]
+    Rf[1][2] = -R[1][2]
+    Rf[2][1] = -R[2][1]
+    sy = -Rf[2][0]
+    ry2 = math.asin(max(-1.0, min(1.0, sy)))
+    cy = math.cos(ry2)
+    if abs(cy) > 1e-6:
+        rx2 = math.atan2(Rf[2][1], Rf[2][2])
+        rz2 = math.atan2(Rf[1][0], Rf[0][0])
+    else:
+        rx2 = math.atan2(-Rf[1][2], Rf[1][1])
+        rz2 = 0.0
+    return [rx2, ry2, rz2]
+
+
+def per_frame_trs(motion3d: dict, params: dict | None = None) -> list[dict]:
+    """动作每帧骨骼 TRS（导出 glTF 动画用）。
+
+    返回每帧 {"rot": {关节: [rx,ry,rz]}, "root": [x,y,z]}——
+    局部欧拉角为 Y-up（Rz·Ry·Rx，可配 Three.js Euler order 'XYZ'），根位移为 Y-up。
+    数据全部来自动作 JSON（fk3d 旋转表 + root3d），不硬编码。
+    """
+    from creatureforge.motion import _build_signals, _eval, _resolve_params
+    n = int(motion3d.get("frame_count", 8))
+    fk3d = motion3d.get("fk3d", {})
+    root3d = motion3d.get("root3d", {})
+    out = []
+    for index in range(n):
+        ctx = {
+            "params": _resolve_params(motion3d, params),
+            "index": index,
+            "frame_count": n,
+            "phase": math.tau * (index % n) / n,
+            "signals": _build_signals(motion3d),
+        }
+        rot: dict[str, list[float]] = {}
+        for j, comp in fk3d.get("rotations3d", {}).items():
+            rx = _eval(comp.get("x_rot", 0.0), ctx)
+            ry = _eval(comp.get("y_rot", 0.0), ctx)
+            rz = _eval(comp.get("z_rot", 0.0), ctx)
+            rot[j] = _flip_euler(rx, ry, rz)
+        root = [_eval(root3d.get("x", 0.0), ctx),
+                -_eval(root3d.get("y", 0.0), ctx),
+                _eval(root3d.get("z", 0.0), ctx)]
+        out.append({"rot": rot, "root": root})
+    return out
+
+
 # --------------------------------------------------------------------------
 # 3D 动作引擎（阶段 2 核心）
 # --------------------------------------------------------------------------

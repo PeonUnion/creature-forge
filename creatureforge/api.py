@@ -191,7 +191,7 @@ class ApiService:
         frames 为每帧 flat 顶点列表（[x,y,z,...]，Y-down 项目坐标，由 LBS 计算）；
         boneNames/bindJoints 供前端叠加骨骼显示；数据全部外挂 skin/。
         """
-        from .skeleton3d import build_skeleton_3d, skinned_vertices
+        from .skeleton3d import build_skeleton_3d, skinned_vertices, per_frame_trs
         if species:
             motion = self.species.get_action(species, action_id)
             species_id = species
@@ -216,6 +216,7 @@ class ApiService:
                 "fk_tree": {j: p for j, p in (skel3d.get("fk_tree") or {}).items()},
                 "bones": [list(b) for b in skel3d["bones"]],
                 "frames": frames,
+                "trs": per_frame_trs(motion, params=p),  # 每帧骨骼 TRS（导出 glTF 动画）
                 "frame_count": n,
                 "fps": int(motion.get("fps", 6)) or 6,
                 "center": list(skel3d.get("center", (480.0, 300.0, 0.0)))}

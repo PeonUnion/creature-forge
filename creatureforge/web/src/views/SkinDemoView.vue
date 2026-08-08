@@ -113,6 +113,7 @@ function buildSkinned(d) {
     metalness: 0.0, side: THREE.DoubleSide,
   })
   const skinned = new THREE.SkinnedMesh(geo, mat)
+  skinned.name = 'creatureforge'  // 动画 track 前缀（GLTFExporter 解析 bones[...] 需所属节点名）
   const skeleton = new THREE.Skeleton(bones)
   skinned.add(bones[0])
   skinned.bind(skeleton)
@@ -121,24 +122,66 @@ function buildSkinned(d) {
   return skinned
 }
 
-/** 导出 .glb：含骨骼 + 蒙皮网格（绑定姿态），Godot/Unity/Blender 可直接导入 */
+/** 从动作每帧 TRS（后端 Y-up 欧拉 + 根位移）构建 AnimationClip（骨骼局部旋转 + 根位移） */
+function buildClip(d) {
+  const trs = d.trs || []
+  const n = trs.length
+  if (!n) return null
+  const fps = d.fps || 6
+  const times = []
+  for (let i = 0; i < n; i++) times.push(i / fps)
+  const tracks = []
+  const euler = new THREE.Euler()
+  const quat = new THREE.Quaternion()
+  const prefix = 'creatureforge'  // 与 buildSkinned 的 skinned.name 一致
+  // 每骨骼局部旋转 track（quaternion keyframes）
+  for (const name of (d.boneNames || [])) {
+    const vals = new Float32Array(n * 4)
+    trs.forEach((fr, i) => {
+      const r = (fr.rot && fr.rot[name]) || [0, 0, 0]
+      euler.set(r[0], r[1], r[2], 'XYZ')
+      quat.setFromEuler(euler)
+      vals[i * 4] = quat.x; vals[i * 4 + 1] = quat.y
+      vals[i * 4 + 2] = quat.z; vals[i * 4 + 3] = quat.w
+    })
+    tracks.push(new THREE.QuaternionKeyframeTrack(`${prefix}.bones[${name}].quaternion`, times, vals))
+  }
+  // 根位移 track（position = 绑定根位置 + root3d，Y-up）
+  const rootName = (d.boneNames || [])[0]
+  const bindRoot = d.bindJoints && d.bindJoints[rootName]
+  if (bindRoot && trs[0] && trs[0].root) {
+    const vals = new Float32Array(n * 3)
+    trs.forEach((fr, i) => {
+      vals[i * 3] = bindRoot[0] + fr.root[0]
+      vals[i * 3 + 1] = -bindRoot[1] + fr.root[1]
+      vals[i * 3 + 2] = bindRoot[2] + fr.root[2]
+    })
+    tracks.push(new THREE.VectorKeyframeTrack(`${prefix}.bones[${rootName}].position`, times, vals))
+  }
+  return new THREE.AnimationClip(actionId.value, n / fps, tracks)
+}
+
+/** 导出 .glb：含骨骼 + 蒙皮网格 + 动作动画，Godot/Unity/Blender 可直接导入播放 */
 async function exportGlb() {
   const d = data.value
   if (!d) { ElMessage.warning('请先加载蒙皮数据'); return }
   exporting.value = true
   try {
     const skinned = buildSkinned(d)
+    const clip = buildClip(d)
     const exporter = new GLTFExporter()
     const result = await new Promise((res, rej) =>
-      exporter.parse(skinned, res, (e) => rej(e), { binary: true }))
+      exporter.parse(skinned, res, (e) => rej(e),
+        { binary: true, animations: clip ? [clip] : undefined }))
     const blob = result instanceof Blob ? result : new Blob([result], { type: 'model/gltf-binary' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = `creatureforge_${actionId.value}.glb`
     a.click()
-    URL.revokeObjectURL(url)
-    ElMessage.success(`已导出 ${actionId.value}.glb（${(blob.size / 1024).toFixed(0)}KB，含骨骼+蒙皮，可导入 Godot/Unity/Blender）`)
+    setTimeout(() => URL.revokeObjectURL(url), 3000)  // 延迟回收，避免下载被取消
+    const animInfo = clip ? `+${clip.tracks.length} 动画轨道` : '无动画'
+    ElMessage.success(`已导出 ${actionId.value}.glb（${(blob.size / 1024).toFixed(0)}KB，含骨骼+蒙皮${animInfo}，可导入 Godot/Unity/Blender）`)
   } catch (e) { ElMessage.error('导出失败: ' + e.message) }
   exporting.value = false
 }
