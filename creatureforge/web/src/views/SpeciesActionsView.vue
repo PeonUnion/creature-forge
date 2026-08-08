@@ -59,10 +59,37 @@
       </div>
 
       <el-tabs v-model="atab">
-        <el-tab-pane label="📄 动作定义" name="def">
-          <el-input v-model="actionJson" type="textarea" :rows="18" class="mono json-editor" spellcheck="false" />
-          <p class="hint">fk3d.rotations3d 为每关节旋转表；可先选动作复制模板，或由动作向导（后续）生成。</p>
+        <!-- 普通：语义化编辑（基本信息 + 参数），非 JSON -->
+        <el-tab-pane label="🧩 普通（语义化）" name="def">
+          <el-form label-position="top" class="form-grid">
+            <el-form-item label="动作 ID"><el-input v-model="actionEditor.motion_id" placeholder="如 fly3d" /></el-form-item>
+            <el-form-item label="名称"><el-input v-model="actionEditor.title" placeholder="如 飞行" /></el-form-item>
+            <el-form-item label="帧数"><el-input-number v-model="actionEditor.frame_count" :min="2" :max="120" /></el-form-item>
+            <el-form-item label="描述"><el-input v-model="actionEditor.description" /></el-form-item>
+          </el-form>
+          <div class="sec">
+            <div class="sec-t">动作参数（可调幅度等，随动作数据派生）</div>
+            <div v-for="(spec, pkey) in (actionEditor.params||{})" :key="pkey" class="param-row">
+              <span class="mono pkey">{{ pkey }}</span>
+              <el-input v-model="spec.label" size="small" placeholder="中文名" style="width: 110px" />
+              <el-input-number v-model="spec.min" size="small" :step="0.05" style="width: 88px" />
+              <el-input-number v-model="spec.max" size="small" :step="0.05" style="width: 88px" />
+              <el-input-number v-model="spec.default" size="small" :step="0.05" style="width: 88px" />
+              <el-button size="small" text type="danger" @click="rmParam(pkey)">删</el-button>
+            </div>
+            <el-button size="small" @click="addParam" icon="Plus">加参数</el-button>
+            <span class="hint">旋转/位移数据（fk3d）在高级 JSON 中；预览用物种默认动作模板，或由动作向导（后续）生成关键帧。</span>
+          </div>
         </el-tab-pane>
+
+        <!-- 高级：完整 JSON（与普通模式共享 actionEditor） -->
+        <el-tab-pane label="⚙️ 高级 JSON" name="advanced">
+          <el-input v-model="actionJson" type="textarea" :rows="18" class="mono json-editor" spellcheck="false" />
+          <div class="json-actions">
+            <el-button size="small" @click="syncJsonToEditor">应用 JSON 到普通模式</el-button>
+          </div>
+        </el-tab-pane>
+
         <el-tab-pane label="👁 动作预览" name="preview">
           <div class="preview-controls">
             <CameraControls v-model="cam" compact />
@@ -105,6 +132,34 @@ const motionRenderLoading = ref(false)
 const cam = ref({ yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 })
 let lastMotionId = ''
 
+// 普通/高级 共享 actionEditor；切页签同步 JSON
+watch(atab, (m) => {
+  if (m === 'advanced' && actionEditor.value) {
+    actionJson.value = JSON.stringify(actionEditor.value, null, 2)
+  }
+})
+
+function addParam() {
+  if (!actionEditor.value) return
+  actionEditor.value.params = actionEditor.value.params || {}
+  const n = Object.keys(actionEditor.value.params).length + 1
+  const key = `param${n}`
+  actionEditor.value.params[key] = { label: `参数${n}`, min: 0.5, max: 1.5, step: 0.05, default: 1.0 }
+}
+function rmParam(pkey) {
+  if (!actionEditor.value) return
+  delete actionEditor.value.params[pkey]
+}
+function syncJsonToEditor() {
+  try {
+    const d = JSON.parse(actionJson.value)
+    if (!d.motion_id) { ElMessage.warning('JSON 缺少 motion_id'); return }
+    d.species = props.speciesId
+    actionEditor.value = d
+    ElMessage.success('已应用 JSON，普通模式已同步')
+  } catch (e) { ElMessage.error('JSON 语法错误: ' + e.message) }
+}
+
 async function loadSpecies() {
   try {
     const d = await api.speciesDetail(props.speciesId)
@@ -138,7 +193,14 @@ function startCreateAction() {
 async function saveAction() {
   saving.value = true
   try {
-    const data = JSON.parse(actionJson.value)
+    // 普通模式编辑 actionEditor；若在高级 JSON 页签先应用
+    if (atab.value === 'advanced') {
+      const d = JSON.parse(actionJson.value)
+      if (!d.motion_id) { ElMessage.warning('motion_id 不能为空'); saving.value = false; return }
+      d.species = props.speciesId
+      actionEditor.value = d
+    }
+    const data = JSON.parse(JSON.stringify(actionEditor.value))
     if (!data.motion_id) { ElMessage.warning('motion_id 不能为空'); saving.value = false; return }
     data.species = props.speciesId
     if (actionEditor.value?.motion_id && actionEditor.value.motion_id !== data.motion_id) {
@@ -229,4 +291,10 @@ onBeforeUnmount(() => {
 .empty-inline { padding: 24px; text-align: center; color: #c0c4cc; }
 .mono { font-family: monospace; }
 .json-editor { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 8px; }
+.sec { border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 12px; background: #fafbfc; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.sec-t { font-size: .78rem; font-weight: 600; color: #606266; }
+.param-row { display: flex; align-items: center; gap: 6px; }
+.pkey { width: 110px; color: #606266; overflow: hidden; text-overflow: ellipsis; }
+.json-actions { margin-top: 8px; }
 </style>

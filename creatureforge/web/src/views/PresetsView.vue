@@ -3,156 +3,143 @@
     <div class="page-header">
       <div>
         <h2>🎨 预设管理</h2>
-        <p class="page-desc">预设 = 基于物种的具体实例：调整骨骼尺寸（体型参数）+ 各动作幅度（动作参数）。参数面板由物种派生 schema 自动渲染。</p>
+        <p class="page-desc">预设 = 基于物种的具体实例：体型（骨骼尺寸）+ 动作（幅度）。表格 + 详情页维护。</p>
       </div>
-      <el-button type="primary" icon="Plus" @click="startCreate">新建预设</el-button>
+      <div class="header-actions">
+        <el-button type="primary" @click="startCreate" icon="Plus">新建预设</el-button>
+      </div>
     </div>
 
-    <div class="layout">
-      <!-- 左侧：预设列表（独立入口，预设角色专用） -->
-      <aside class="sidebar">
-        <div class="sidebar-header">
-          <span>预设列表</span>
-          <el-tag size="small" type="info" effect="plain">{{ presetList.length }}</el-tag>
+    <!-- 列表表格 -->
+    <section class="list-view" v-if="!current && !creating">
+      <el-table :data="presetList" border stripe>
+        <el-table-column label="预设" min-width="200">
+          <template #default="{row}">
+            <div class="cell-main"><span class="cell-title">🎨 {{ row.title || row.preset_id }}</span><span class="cell-id mono">{{ row.preset_id }}</span></div>
+          </template>
+        </el-table-column>
+        <el-table-column label="物种" width="140">
+          <template #default="{row}"><el-tag size="small" effect="plain">🦴 {{ row.species }}</el-tag></template>
+        </el-table-column>
+        <el-table-column prop="description" label="描述" min-width="220" show-overflow-tooltip />
+        <el-table-column label="操作" width="180" align="center">
+          <template #default="{row}">
+            <el-button size="small" text type="primary" @click="openPreset(row)">编辑</el-button>
+            <el-button size="small" text type="danger" @click="confirmDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="!presetList.length" class="empty-list">
+        <div class="empty-icon">🎨</div><p>暂无预设</p>
+        <el-button type="primary" @click="startCreate">新建预设</el-button>
+      </div>
+    </section>
+
+    <!-- 详情：体型 / 动作 / 预览 / 蒙皮 -->
+    <section class="detail-view" v-else-if="current">
+      <div class="detail-head">
+        <div class="crumb">
+          <span class="crumb-root">预设</span><span class="crumb-sep">/</span><span class="crumb-now">{{ current.title || current.preset_id }}</span>
         </div>
-        <div v-if="loading" class="panel-loading"><el-skeleton :rows="5" animated /></div>
-        <div v-else class="sidebar-list">
-          <div v-for="p in presetList" :key="p.preset_id" class="list-item"
-               :class="{ active: current?.preset_id === p.preset_id }" @click="openPreset(p)">
-            <div class="item-main">
-              <span class="item-name">🎨 {{ p.title || p.preset_id }}</span>
-              <span class="item-id">{{ p.preset_id }}</span>
-            </div>
-            <div class="item-meta">
-              <span class="meta-chip">🦴 {{ p.species }}</span>
-              <span class="meta-chip">{{ p.description }}</span>
-            </div>
-            <div class="item-actions">
-              <el-button size="small" text type="danger" @click.stop="confirmDelete(p)">删除</el-button>
+        <div class="head-actions">
+          <el-button size="small" @click="close">返回列表</el-button>
+          <el-button size="small" type="primary" @click="save" :loading="saving" icon="Check">保存预设</el-button>
+        </div>
+      </div>
+
+      <el-form label-position="top" class="form-grid">
+        <el-form-item label="预设 ID"><el-input v-model="current.preset_id" :disabled="!isNew" placeholder="如 model_male" /></el-form-item>
+        <el-form-item label="名称"><el-input v-model="current.title" placeholder="如 模特男" /></el-form-item>
+        <el-form-item label="描述"><el-input v-model="current.description" /></el-form-item>
+        <el-form-item label="物种（schema 来源）"><el-tag effect="plain">🦴 {{ current.species }}</el-tag></el-form-item>
+      </el-form>
+
+      <el-tabs v-model="tab">
+        <el-tab-pane label="📐 体型参数" name="body">
+          <p class="hint">调整骨骼尺寸（来自物种骨架 param_chains 派生 schema，default 为物种默认）。</p>
+          <div v-if="bodyParamItems.length" class="param-grid">
+            <div v-for="it in bodyParamItems" :key="it.key" class="param-item">
+              <div class="param-head">
+                <label :title="it.key">{{ it.label }}</label>
+                <span class="val">{{ round(current.body[it.key] ?? it.def) }}</span>
+              </div>
+              <el-slider :min="it.min" :max="it.max" :step="it.step" :show-tooltip="false"
+                         :model-value="current.body[it.key] ?? it.def" @update:model-value="setBody(it.key, $event)" />
             </div>
           </div>
-          <div v-if="!presetList.length" class="empty-list"><p>暂无预设，点击「新建预设」</p></div>
-        </div>
-      </aside>
+          <div v-else class="preview-empty"><p>该物种没有体型参数</p></div>
+        </el-tab-pane>
 
-      <!-- 右侧 -->
-      <section class="content">
-        <!-- 新建：先选物种（schema 来源） -->
-        <div v-if="creating" class="panel">
-          <h4 class="panel-title">新建预设 — 选择物种</h4>
-          <p class="hint">物种提供体型参数 schema（骨骼尺寸）与各动作参数 schema（动作幅度）。</p>
-          <div class="create-row">
-            <el-select v-model="newSpeciesId" placeholder="选择物种" style="width: 300px" filterable>
-              <el-option v-for="s in speciesList" :key="s.id"
-                         :label="`${s.title} (${s.id}) · ${(s.actions||[]).length} 动作`" :value="s.id" />
+        <el-tab-pane label="🏃 动作幅度" name="actions">
+          <p class="hint">调整各动作幅度（来自动作 JSON params 派生，default 为真实数据值）。</p>
+          <div v-for="(a, aid) in schema.actions" :key="aid" class="action-card">
+            <div class="action-head"><span>{{ a.title || aid }}</span><span class="mono">{{ aid }}</span></div>
+            <div v-if="Object.keys(a.params||{}).length" class="param-grid">
+              <div v-for="(spec, pkey) in a.params" :key="pkey" class="param-item">
+                <div class="param-head">
+                  <label :title="pkey">{{ spec.label || pkey }}</label>
+                  <span class="val">{{ round((current.actions[aid]||{})[pkey] ?? spec.default) }}</span>
+                </div>
+                <el-slider :min="spec.min" :max="spec.max" :step="spec.step||0.01" :show-tooltip="false"
+                           :model-value="(current.actions[aid]||{})[pkey] ?? spec.default"
+                           @update:model-value="setAction(aid, pkey, $event)" />
+              </div>
+            </div>
+            <span v-else class="no-params">该动作无可调参数（数据驱动，无预设可调项）</span>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="👁 预览" name="preview">
+          <div class="preview-controls">
+            <CameraControls v-model="cam" />
+            <el-select v-model="previewAction" placeholder="骨架（应用体型）" clearable filterable style="width: 200px">
+              <el-option v-for="(a, aid) in schema.actions" :key="aid" :label="`动作：${a.title||aid}`" :value="aid" />
             </el-select>
-            <el-button type="primary" :disabled="!newSpeciesId" @click="initNew" icon="Right">初始化预设</el-button>
-            <el-button @click="creating = false">取消</el-button>
           </div>
-        </div>
+          <Skeleton3DViewer v-if="previewData" ref="previewViewer"
+            :joints="previewData.joints" :frames="previewData.frames" :bones="previewData.bones"
+            :head-radius="previewData.head_radius" :center="previewData.center"
+            :fps="previewData.fps"
+            @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
+          <div v-else class="preview-empty"><p>{{ rendering ? '渲染中…' : '调整参数自动渲染预览' }}</p></div>
+        </el-tab-pane>
 
-        <!-- 编辑 -->
-        <div v-else-if="current" class="panel">
-          <div class="content-header">
-            <div class="crumb"><span class="crumb-root">预设</span><span class="crumb-sep">/</span><span class="crumb-now">{{ current.title || current.preset_id }}</span></div>
-            <div class="content-actions">
-              <el-button @click="close">关闭</el-button>
-              <el-button type="primary" @click="save" :loading="saving" icon="Check">保存预设</el-button>
-            </div>
+        <el-tab-pane label="🧍 蒙皮" name="skinning">
+          <div class="preview-controls">
+            <CameraControls v-model="cam" />
+            <el-select v-model="previewSkinId" placeholder="选择皮肤" clearable filterable style="width: 210px">
+              <el-option v-for="s in currentSkins" :key="s.skin_id"
+                         :label="`${s.title||s.skin_id} (${s.skin_id})`" :value="s.skin_id" />
+            </el-select>
+            <el-select v-model="previewAction" placeholder="选择动作" clearable filterable style="width: 150px">
+              <el-option v-for="(a, aid) in schema.actions" :key="aid" :label="a.title||aid" :value="aid" />
+            </el-select>
+            <el-button size="small" type="primary" :loading="exporting" icon="Download"
+                       :disabled="!previewSkinId || !previewAction" @click="exportGlb">导出 GLB</el-button>
+            <span class="hint">预设（体型+动作）+ 皮肤（材质+体态）→ 蒙皮 → 导出</span>
           </div>
+          <SkinnedViewer v-if="skinPreviewData" ref="skinViewer"
+            :mesh="skinPreviewData.mesh" :frames="skinPreviewData.frames" :fps="skinPreviewData.fps"
+            :center="skinPreviewData.center"
+            @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
+          <div v-else class="preview-empty"><p>{{ skinRendering ? '渲染中…' : '选择皮肤 + 动作加载蒙皮预览（后端 LBS，应用预设体型/动作 + 皮肤材质/体态）' }}</p></div>
+        </el-tab-pane>
+      </el-tabs>
+    </section>
 
-          <el-form label-position="top" class="form-grid">
-            <el-form-item label="预设 ID"><el-input v-model="current.preset_id" :disabled="!isNew" placeholder="如 model_male" /></el-form-item>
-            <el-form-item label="名称"><el-input v-model="current.title" placeholder="如 模特男" /></el-form-item>
-            <el-form-item label="描述"><el-input v-model="current.description" /></el-form-item>
-            <el-form-item label="物种（schema 来源）"><el-tag effect="plain">🦴 {{ current.species }}</el-tag></el-form-item>
-          </el-form>
-
-          <el-tabs v-model="tab">
-            <!-- 体型参数：调整骨骼尺寸 -->
-            <el-tab-pane label="📐 体型参数" name="body">
-              <p class="hint">调整骨骼尺寸（来自物种骨架 param_chains 派生 schema，default 为物种默认）。</p>
-              <div v-if="bodyParamItems.length" class="param-grid">
-                <div v-for="it in bodyParamItems" :key="it.key" class="param-item">
-                  <div class="param-head">
-                    <label :title="it.key">{{ it.label }}</label>
-                    <span class="val">{{ round(current.body[it.key] ?? it.def) }}</span>
-                  </div>
-                  <el-slider :min="it.min" :max="it.max" :step="it.step" :show-tooltip="false"
-                             :model-value="current.body[it.key] ?? it.def" @update:model-value="setBody(it.key, $event)" />
-                </div>
-              </div>
-              <div v-else class="preview-empty"><p>该物种没有体型参数</p></div>
-            </el-tab-pane>
-
-            <!-- 动作参数：调整动作幅度 -->
-            <el-tab-pane label="🏃 动作幅度" name="actions">
-              <p class="hint">调整各动作幅度（来自动作 JSON params 派生，default 为真实数据值）。</p>
-              <div v-for="(a, aid) in schema.actions" :key="aid" class="action-card">
-                <div class="action-head"><span>{{ a.title || aid }}</span><span class="mono">{{ aid }}</span></div>
-                <div v-if="Object.keys(a.params||{}).length" class="param-grid">
-                  <div v-for="(spec, pkey) in a.params" :key="pkey" class="param-item">
-                    <div class="param-head">
-                      <label :title="pkey">{{ spec.label || pkey }}</label>
-                      <span class="val">{{ round((current.actions[aid]||{})[pkey] ?? spec.default) }}</span>
-                    </div>
-                    <el-slider :min="spec.min" :max="spec.max" :step="spec.step||0.01" :show-tooltip="false"
-                               :model-value="(current.actions[aid]||{})[pkey] ?? spec.default"
-                               @update:model-value="setAction(aid, pkey, $event)" />
-                  </div>
-                </div>
-                <span v-else class="no-params">该动作无可调参数（数据驱动，无预设可调项）</span>
-              </div>
-            </el-tab-pane>
-
-            <!-- 预览 -->
-            <el-tab-pane label="👁 预览" name="preview">
-              <div class="preview-controls">
-                <CameraControls v-model="cam" />
-                <el-select v-model="previewAction" placeholder="骨架（应用体型）" clearable filterable style="width: 200px">
-                  <el-option v-for="(a, aid) in schema.actions" :key="aid" :label="`动作：${a.title||aid}`" :value="aid" />
-                </el-select>
-              </div>
-              <Skeleton3DViewer v-if="previewData" ref="previewViewer"
-                :joints="previewData.joints" :frames="previewData.frames" :bones="previewData.bones"
-                :head-radius="previewData.head_radius" :center="previewData.center"
-                :fps="previewData.fps"
-                @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
-              <div v-else class="preview-empty"><p>{{ rendering ? '渲染中…' : '调整参数自动渲染预览' }}</p></div>
-            </el-tab-pane>
-
-            <!-- 蒙皮：预设 + 皮肤 → 蒙皮预览 → 最终导出（GLB） -->
-            <el-tab-pane label="🧍 蒙皮" name="skinning">
-              <div class="preview-controls">
-                <CameraControls v-model="cam" />
-                <el-select v-model="previewSkinId" placeholder="选择皮肤" clearable filterable style="width: 210px">
-                  <el-option v-for="s in currentSkins" :key="s.skin_id"
-                             :label="`${s.title||s.skin_id} (${s.skin_id})`" :value="s.skin_id" />
-                </el-select>
-                <el-select v-model="previewAction" placeholder="选择动作" clearable filterable style="width: 150px">
-                  <el-option v-for="(a, aid) in schema.actions" :key="aid" :label="a.title||aid" :value="aid" />
-                </el-select>
-                <el-button size="small" type="primary" :loading="exporting" icon="Download"
-                           :disabled="!previewSkinId || !previewAction" @click="exportGlb">导出 GLB</el-button>
-                <span class="hint">预设（体型+动作）+ 皮肤（材质+体态）→ 蒙皮 → 导出</span>
-              </div>
-              <SkinnedViewer v-if="skinPreviewData" ref="skinViewer"
-                :mesh="skinPreviewData.mesh" :frames="skinPreviewData.frames" :fps="skinPreviewData.fps"
-                :center="skinPreviewData.center"
-                @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
-              <div v-else class="preview-empty"><p>{{ skinRendering ? '渲染中…' : '选择皮肤 + 动作加载蒙皮预览（后端 LBS，应用预设体型/动作 + 皮肤材质/体态）' }}</p></div>
-            </el-tab-pane>
-          </el-tabs>
-        </div>
-
-        <div v-else class="panel empty-state">
-          <div class="empty-icon">🎨</div>
-          <h3>选择或创建预设</h3>
-          <p>预设是基于物种的具体实例：调体型（骨骼尺寸）+ 调动作（幅度）。</p>
-          <el-button type="primary" @click="startCreate">新建预设</el-button>
-        </div>
-      </section>
-    </div>
+    <!-- 新建：选物种 -->
+    <section class="detail-view" v-else-if="creating">
+      <h4 class="panel-title">新建预设 — 选择物种</h4>
+      <p class="hint">物种提供体型参数 schema（骨骼尺寸）与各动作参数 schema（动作幅度）。</p>
+      <div class="create-row">
+        <el-select v-model="newSpeciesId" placeholder="选择物种" style="width: 300px" filterable>
+          <el-option v-for="s in speciesList" :key="s.id"
+                     :label="`${s.title} (${s.id}) · ${(s.actions||[]).length} 动作`" :value="s.id" />
+        </el-select>
+        <el-button type="primary" :disabled="!newSpeciesId" @click="initNew" icon="Right">初始化预设</el-button>
+        <el-button @click="creating = false">取消</el-button>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -168,29 +155,26 @@ const loading = ref(true)
 const saving = ref(false)
 const presetList = ref([])
 const speciesList = ref([])
-const skinList = ref([])        // 全部皮肤（当前预设的皮肤可选）
+const skinList = ref([])
 const current = ref(null)
 const isNew = ref(false)
 const creating = ref(false)
 const newSpeciesId = ref('')
 const tab = ref('body')
 
-// 当前预设的皮肤（皮肤基于预设：预设物种提供网格/权重 + 皮肤参数 schema）
 const currentSkins = computed(() => skinList.value.filter(s => s.preset === current.value?.preset_id))
 
-// 预览（统一 WebGL 组件：骨架 joints 或动作 frames，均由父组件请求数据传入）
 const cam = ref({ yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 })
 const previewAction = ref('')
-const lastPreviewAction = ref('')  // 上一次动作 id（动作切换时拼接过渡段）
-const previewData = ref(null)   // WebGL 数据 {joints|frames, bones, fps, ...}
-const previewViewer = ref(null) // Skeleton3DViewer 实例（setView 控制相机）
+const lastPreviewAction = ref('')
+const previewData = ref(null)
+const previewViewer = ref(null)
 const rendering = ref(false)
 let renderTimer = null
 
-// 蒙皮预览（预设 + 皮肤 → 后端 LBS 蒙皮数据，含皮肤材质 + 体态）
 const previewSkinId = ref('')
 const skinPreviewData = ref(null)
-const skinViewer = ref(null)    // SkinnedViewer 实例
+const skinViewer = ref(null)
 const skinRendering = ref(false)
 const exporting = ref(false)
 let skinTimer = null
@@ -217,7 +201,6 @@ async function loadSkins() {
   try { const r = await api.skins(); skinList.value = r.skins || [] }
   catch (e) { /* 皮肤列表加载失败不阻塞 */ }
 }
-
 async function loadPresets() {
   try { const r = await api.presets(); presetList.value = r.presets || [] }
   catch (e) { ElMessage.error('加载预设失败: ' + e.message) }
@@ -226,8 +209,6 @@ async function loadSpecies() {
   try { const r = await api.species(); speciesList.value = r.species || [] }
   catch (e) { ElMessage.error('加载物种失败: ' + e.message) }
 }
-
-// -- CRUD --
 
 async function openPreset(p) {
   creating.value = false
@@ -282,8 +263,6 @@ async function confirmDelete(p) {
   } catch (e) { if (e !== 'cancel') ElMessage.error(e.message || e) }
 }
 
-// -- 参数更新 --
-
 function setBody(key, val) {
   current.value.body = { ...(current.value.body || {}), [key]: val }
 }
@@ -294,12 +273,8 @@ function setAction(aid, pkey, val) {
   }
 }
 
-// -- 实时预览（body/actions/cam/action 变化 → live 渲染） --
-
-// 数据变化（体型/动作参数/动作选择）→ 重新请求 WebGL 数据（父组件调接口，组件只接收）
 watch([() => current.value?.body, () => current.value?.actions, previewAction],
       () => scheduleRender(), { deep: true })
-// 相机变化 → 仅 setView（WebGL 即时，不重请求）
 watch(cam, () => {
   if (previewData.value && previewViewer.value) {
     previewViewer.value.setView(cam.value.yaw, cam.value.pitch, cam.value.dist, cam.value.panX, cam.value.panY)
@@ -309,7 +284,6 @@ watch(cam, () => {
   }
 }, { deep: true })
 
-// 蒙皮：皮肤/动作变化 → 重新加载蒙皮数据（预设 + 皮肤）
 watch([previewSkinId, previewAction], () => {
   if (tab.value === 'skinning') scheduleSkinRender()
 })
@@ -327,7 +301,6 @@ async function renderLive() {
   try {
     const body = encodeURIComponent(JSON.stringify(c.body || {}))
     if (previewAction.value) {
-      // 动作预览：每帧 3D 关节数据（应用体型 + 动作参数）；动作切换时拼接过渡段
       const params = encodeURIComponent(JSON.stringify((c.actions || {})[previewAction.value] || {}))
       const switching = lastPreviewAction.value && lastPreviewAction.value !== previewAction.value
       const trans = switching ? `&transition_from=${encodeURIComponent(lastPreviewAction.value)}` : ''
@@ -337,7 +310,6 @@ async function renderLive() {
       else previewData.value = null
       lastPreviewAction.value = previewAction.value
     } else {
-      // 骨架预览：应用体型后的骨架 3D 数据
       const r = await api.skeleton3dData(c.species, `data=1&body=${body}`)
       if (r.ok && r.joints) previewData.value = r
       else previewData.value = null
@@ -345,8 +317,6 @@ async function renderLive() {
   } catch (e) { ElMessage.error(e.message) }
   rendering.value = false
 }
-
-// -- 蒙皮预览（预设 + 皮肤 → 后端 LBS 蒙皮，应用皮肤材质 + 体态） --
 
 function scheduleSkinRender() {
   if (!current.value) return
@@ -370,7 +340,6 @@ async function renderSkinLive() {
   skinRendering.value = false
 }
 
-/** 导出 GLB：预设（物种+体型+动作）+ 皮肤（材质+体态）→ 蒙皮 → 后端导出最终素材 */
 async function exportGlb() {
   const c = current.value
   if (!c || !previewSkinId.value || !previewAction.value) return
@@ -407,49 +376,31 @@ onBeforeUnmount(() => {
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
 .page-header h2 { margin: 0 0 4px; }
 .page-desc { color: #909399; font-size: .85rem; margin: 0; }
-.layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+.header-actions { display: flex; gap: 8px; }
 
-.sidebar { background: #fff; border-radius: 10px; border: 1px solid #e4e7ed; overflow: hidden; position: sticky; top: 76px; }
-.sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid #f0f0f0; font-weight: 600; }
-.panel-loading { padding: 14px; }
-.sidebar-list { max-height: calc(100vh - 180px); overflow-y: auto; }
-.list-item { padding: 10px 14px; border-bottom: 1px solid #f5f5f5; cursor: pointer; }
-.list-item:hover { background: #f7f9fc; }
-.list-item.active { background: #ecf5ff; }
-.item-main { display: flex; align-items: center; gap: 6px; }
-.item-name { font-weight: 600; font-size: .9rem; }
-.item-id { font-size: .72rem; color: #909399; }
-.item-meta { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
-.meta-chip { font-size: .7rem; color: #909399; background: #f5f7fa; padding: 1px 8px; border-radius: 999px; }
-.item-actions { margin-top: 6px; }
-.empty-list { padding: 30px; text-align: center; color: #c0c4cc; }
-
-.content { background: #fff; border-radius: 10px; border: 1px solid #e4e7ed; padding: 16px 20px; min-height: 480px; }
-.panel { }
+.list-view { background: #fff; border: 1px solid #e4e7ed; border-radius: 10px; padding: 8px; }
+.detail-view { background: #fff; border: 1px solid #e4e7ed; border-radius: 10px; padding: 16px 20px; }
+.detail-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.crumb { font-size: .95rem; }
+.crumb-root { color: #909399; } .crumb-sep { color: #c0c4cc; } .crumb-now { font-weight: 600; }
+.head-actions { display: flex; gap: 8px; }
+.cell-main { display: flex; align-items: center; gap: 8px; }
+.cell-title { font-weight: 600; font-size: .9rem; }
+.cell-id { color: #909399; font-size: .72rem; font-family: monospace; }
+.empty-list { padding: 48px 20px; text-align: center; color: #c0c4cc; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.empty-icon { font-size: 2rem; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 8px; }
+.param-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.param-item { border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 12px; background: #fafbfc; }
+.param-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.param-head label { font-size: .8rem; color: #606266; }
+.val { font-family: monospace; font-size: .8rem; color: #409eff; }
+.action-card { border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; background: #fafbfc; }
+.action-head { display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: 600; font-size: .85rem; }
+.no-params { color: #909399; font-size: .78rem; }
+.preview-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.preview-empty { border: 1px dashed #d9d9d9; border-radius: 8px; min-height: 260px; display: flex; align-items: center; justify-content: center; color: #c0c4cc; }
+.hint { color: #909399; font-size: .82rem; margin: 0 0 12px; }
 .panel-title { margin: 0 0 8px; }
-.content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.crumb { color: #909399; font-size: .85rem; }
-.crumb-root, .crumb-sep { color: #c0c4cc; }
-.crumb-now { color: #303133; font-weight: 600; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
-.hint { color: #909399; font-size: .8rem; margin: 0 0 12px; }
-.create-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
-
-.param-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px 24px; }
-.param-item { padding: 8px 10px; border: 1px solid #f0f0f0; border-radius: 8px; }
-.param-head { display: flex; justify-content: space-between; align-items: center; }
-.param-head label { font-size: .85rem; color: #606266; }
-.val { font-family: monospace; color: #909399; font-size: .75rem; }
-.action-card { border: 1px solid #f0f0f0; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
-.action-head { display: flex; justify-content: space-between; align-items: center; font-weight: 600; margin-bottom: 8px; }
-.mono { font-family: monospace; font-size: .72rem; color: #909399; }
-.no-params { color: #c0c4cc; font-size: .8rem; }
-
-.preview-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-.preview-empty { text-align: center; color: #c0c4cc; padding: 40px; }
-
-.empty-state { text-align: center; padding: 60px 20px; }
-.empty-state .empty-icon { font-size: 3rem; }
-.empty-state h3 { margin: 8px 0 6px; }
-.empty-state p { color: #909399; margin-bottom: 14px; }
+.create-row { display: flex; align-items: center; gap: 10px; }
 </style>

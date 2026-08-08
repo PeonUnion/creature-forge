@@ -114,12 +114,9 @@ test.describe('物种管理（全量 E2E）', () => {
     const row = page.locator('.el-table__row', { hasText: '人类骨骼拓扑' }).first()
     await row.getByRole('button', { name: '动作' }).click()
     await page.locator('button', { hasText: '新建动作' }).click()
-    // 编辑 JSON 定义：填 motion_id
-    const editor = page.locator('.acts-editor textarea')
-    const json = JSON.parse(await editor.inputValue())
-    json.motion_id = aid
-    json.title = 'E2E 测试动作'
-    await editor.fill(JSON.stringify(json, null, 2))
+    // 语义化编辑：基本信息表单（动作 ID / 名称）
+    await page.getByPlaceholder('如 fly3d').fill(aid)
+    await page.getByPlaceholder('如 飞行').fill('E2E 测试动作')
     await page.locator('.acts-editor button', { hasText: '保存动作' }).click()
     await expect(page.locator('.el-table__row', { hasText: aid })).toBeVisible({ timeout: 10_000 })
     // 删除
