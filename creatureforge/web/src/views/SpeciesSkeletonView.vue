@@ -21,11 +21,12 @@
     <div v-if="mode === 'normal'" class="normal-body">
       <el-tabs v-model="sub">
         <el-tab-pane label="🦴 骨架结构" name="skeleton">
-          <p class="hint">第一个关节即「根」；可「一键镜像」对称肢（wing_l → wing_r）。</p>
+          <p class="hint">关节按父子关系树形展示（根在最前，缩进 = 子级）。每行可直接下拉改父级、改名；可「一键镜像」对称肢（wing_l → wing_r）。</p>
           <div class="wiz-layout">
             <div class="wiz-preview">
               <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
-                :head-radius="12.5" :center="[480, 300, 0]" />
+                :head-radius="12.5" :center="[480, 300, 0]"
+                :highlight="highlightJoint" @pick="onPick" />
               <div v-else class="preview-empty"><p>添加关节后实时显示骨架</p></div>
             </div>
             <div class="wiz-controls">
@@ -39,13 +40,28 @@
                 <el-button size="small" type="primary" @click="addJoint" icon="Plus">加关节</el-button>
               </div>
               <div class="sec">
-                <div class="sec-t">关节列表（{{ jointNames.length }}）</div>
+                <div class="sec-t">关节树（{{ jointNames.length }}，缩进 = 子级，父级可下拉重接）</div>
+                <p class="hint small">悬停/点击行 → 3D 高亮该关节及子树；在 3D 预览点关节球可反向定位。</p>
                 <div class="joint-list">
-                  <div v-for="n in jointNames" :key="n" class="joint-row">
-                    <span class="mono">{{ n }}</span>
-                    <span class="parent">{{ nodes[n]?.parent ? '← ' + nodes[n].parent : '根' }}</span>
-                    <el-button size="small" text type="primary" @click="mirrorJoint(n)">镜像</el-button>
-                    <el-button size="small" text type="danger" @click="rmJoint(n)">删</el-button>
+                  <div v-for="jt in jointTree" :key="jt.name" class="joint-row"
+                    :ref="el => rowEls[jt.name] = el"
+                    :class="{ selected: selJoint === jt.name }"
+                    :style="{ paddingLeft: (jt.depth ? 10 + jt.depth * 16 : 8) + 'px' }"
+                    @mouseenter="hoverJoint = jt.name" @mouseleave="hoverJoint = selJoint"
+                    @click="toggleSel(jt.name)">
+                    <span class="tree-mark" :class="{ root: !jt.parent }">{{ jt.parent ? '└' : '●' }}</span>
+                    <span class="mono">{{ jt.name }}</span>
+                    <span class="parent-sel" @click.stop>
+                      <el-select :model-value="jt.parent" size="small" placeholder="根"
+                        clearable filterable @change="(v) => changeParent(jt.name, v)">
+                        <el-option v-for="n in jointNames" :key="n" :label="n" :value="n" :disabled="n === jt.name" />
+                      </el-select>
+                    </span>
+                    <span class="row-actions" @click.stop>
+                      <el-button size="small" text type="primary" @click="renameJoint(jt.name)">改名</el-button>
+                      <el-button size="small" text type="primary" @click="mirrorJoint(jt.name)">镜像</el-button>
+                      <el-button size="small" text type="danger" @click="rmJoint(jt.name)">删</el-button>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -63,7 +79,8 @@
           <div class="wiz-layout">
             <div class="wiz-preview">
               <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
-                :head-radius="12.5" :center="[480, 300, 0]" />
+                :head-radius="12.5" :center="[480, 300, 0]"
+                :highlight="highlightJoint" @pick="onPickPose" />
               <div v-else class="preview-empty"><p>骨架预览</p></div>
             </div>
             <div class="wiz-controls">
@@ -174,6 +191,31 @@ const paramChains = computed(() => wiz.value?.param_chains || {})
 const pos3d = computed(() => wiz.value?.positions_3d || {})
 const jointNames = computed(() => Object.keys(nodes.value))
 
+// 关节树：按父级组织（根在最前），DFS 层级排序；孤儿/断链子树的根兜底
+const jointTree = computed(() => {
+  const childrenOf = {}
+  const names = Object.keys(nodes.value)
+  for (const name of names) {
+    const nd = nodes.value[name]
+    const p = (nd && nd.parent) || ''
+    ;(childrenOf[p] ||= []).push(name)
+  }
+  for (const arr of Object.values(childrenOf)) arr.sort()
+  const out = []
+  const visited = new Set()
+  const walk = (p, depth) => {
+    for (const name of childrenOf[p] || []) {
+      if (visited.has(name)) continue
+      visited.add(name)
+      out.push({ name, depth, parent: p || null })
+      walk(name, depth + 1)
+    }
+  }
+  walk('', 0)
+  for (const name of names) { if (!visited.has(name)) walk(name, 0) }
+  return out
+})
+
 const preview = computed(() => {
   const joints = {}
   const bones = []
@@ -190,6 +232,23 @@ const chainJoints = ref('')
 const poseJoint = ref('')
 const poseStr = ref('')
 const rotJoint = ref('')
+
+// 预览 ↔ 关节树联动：hover/选中高亮 + 3D 点选反向定位
+const hoverJoint = ref('')
+const selJoint = ref('')
+const rowEls = {}
+const highlightJoint = computed(() => selJoint.value || hoverJoint.value || '')
+function toggleSel(name) { selJoint.value = selJoint.value === name ? '' : name }
+function onPick(name) {
+  selJoint.value = name
+  hoverJoint.value = name
+  const el = rowEls[name]
+  if (el) el.scrollIntoView({ block: 'nearest' })
+}
+function onPickPose(name) {
+  selJoint.value = name
+  rotJoint.value = name  // 3D 点选 = 姿态操作作用对象（旋转/平移即作用于该关节）
+}
 const posePlaceholder = computed(() =>
   poseJoint.value && pos3d.value[poseJoint.value]
     ? `当前 ${pos3d.value[poseJoint.value].join(',')}（输入 x,y,z）`
@@ -252,6 +311,26 @@ async function rmJoint(name) {
 async function mirrorJoint(name) {
   try { await api.wizardMirror(props.speciesId, name); await refresh() }
   catch (e) { ElMessage.error(e.message) }
+}
+async function changeParent(name, parent) {
+  try {
+    await api.wizardJointParent(props.speciesId, name, parent || null)
+    await refresh()
+  } catch (e) { ElMessage.error(e.message); await refresh() }
+}
+async function renameJoint(oldName) {
+  let value = null
+  try {
+    const r = await ElMessageBox.prompt(`重命名「${oldName}」为：`, '改名', {
+      inputValue: oldName,
+      inputValidator: (v) => (v && v.trim() && v.trim() !== oldName) || '请输入不同的新名称',
+    })
+    value = r.value.trim()
+  } catch (e) { return }  // 取消
+  try {
+    await api.wizardJointRename(props.speciesId, oldName, value)
+    await refresh()
+  } catch (e) { ElMessage.error(e.message) }
 }
 async function addChain() {
   const name = chainName.value.trim()
@@ -328,8 +407,14 @@ async function save() {
 .sec { border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 12px; background: #fafbfc; display: flex; flex-direction: column; gap: 8px; }
 .sec-t { font-size: .78rem; font-weight: 600; color: #606266; }
 .joint-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.joint-row { display: flex; align-items: center; gap: 8px; font-size: .8rem; padding: 2px 4px; border-radius: 4px; }
+.joint-row { display: flex; align-items: center; gap: 6px; font-size: .8rem; padding: 2px 4px; border-radius: 4px; cursor: pointer; }
 .joint-row:hover { background: #f0f2f5; }
+.joint-row.selected { background: #ecf5ff; outline: 1px solid #409eff; }
+.hint.small { font-size: .72rem; margin: 0 0 6px; }
+.tree-mark { color: #c0c4cc; font-size: .72rem; width: 10px; flex: 0 0 auto; }
+.tree-mark.root { color: #67c23a; }
+.parent-sel { width: 96px; flex: 0 0 auto; }
+.row-actions { margin-left: auto; display: flex; gap: 2px; white-space: nowrap; }
 .mono { font-family: monospace; }
 .parent { color: #909399; font-size: .72rem; flex: 1; }
 .row3 { display: flex; gap: 6px; }

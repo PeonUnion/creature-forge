@@ -31,15 +31,20 @@ const props = defineProps({
   headRadius: { type: Number, default: 22 },
   frames: { type: Array, default: () => [] },    // 动作帧：每帧 joints（WebGL 动画）
   fps: { type: Number, default: 6 },
+  highlight: { type: String, default: '' },      // 高亮关节（含其后代子树），''=无
 })
-const emit = defineEmits(['ready', 'view'])
+const emit = defineEmits(['ready', 'view', 'pick'])
 
 const hasFrames = computed(() => props.frames && props.frames.length > 0)
 const mountEl = ref(null)
 let renderer, scene, camera, controls, skeletonGroup = null, grid = null
 let jointsMeshes = new Map()
+let meshBaseScale = new Map()      // 每个关节球的基础 scale（高亮放大用）
 let bonesLine = null
 let bonesGeo = null
+let bonesLineHi = null
+let bonesGeoHi = null
+let hiSet = new Set()              // 当前高亮关节集合（选中关节 + 后代）
 let rafId = null, resizeObs = null
 let fitDist = 300, fitTarget = new THREE.Vector3()
 
@@ -73,11 +78,14 @@ function init() {
   controls.staticMoving = true
   controls.addEventListener('change', () => renderer.render(scene, camera))
 
-  // 拖拽结束 → 同步相机角度给父组件（快捷按钮高亮）
-  let pointerDown = false
-  renderer.domElement.addEventListener('pointerdown', () => { pointerDown = true })
-  renderer.domElement.addEventListener('pointerup', () => {
-    if (pointerDown) { pointerDown = false; emit('view', viewFromCamera()) }
+  // 拖拽结束 → 同步相机角度；未拖拽（点击）→ 拾取关节球 emit('pick')
+  let pointerDown = false, downX = 0, downY = 0
+  renderer.domElement.addEventListener('pointerdown', (e) => { pointerDown = true; downX = e.clientX; downY = e.clientY })
+  renderer.domElement.addEventListener('pointerup', (e) => {
+    if (!pointerDown) return
+    pointerDown = false
+    if (Math.hypot(e.clientX - downX, e.clientY - downY) < 6) pickAt(e)
+    emit('view', viewFromCamera())
   })
 
   buildSkeleton()
@@ -100,29 +108,35 @@ function init() {
 function buildSkeleton() {
   if (skeletonGroup) { scene.remove(skeletonGroup); skeletonGroup = null }
   jointsMeshes = new Map()
+  meshBaseScale = new Map()
   skeletonGroup = new THREE.Group()
 
-  // 骨骼线（顶点随动画逐帧更新）
+  // 骨骼线：普通（蓝）+ 高亮（橙，选中关节及其子树）
   bonesGeo = new THREE.BufferGeometry()
   bonesLine = new THREE.LineSegments(bonesGeo, new THREE.LineBasicMaterial({ color: 0x9dd6ff }))
   bonesLine.frustumCulled = false
   skeletonGroup.add(bonesLine)
+  bonesGeoHi = new THREE.BufferGeometry()
+  bonesLineHi = new THREE.LineSegments(bonesGeoHi,
+    new THREE.LineBasicMaterial({ color: 0xffb020, transparent: true, opacity: 0.95 }))
+  bonesLineHi.frustumCulled = false
+  skeletonGroup.add(bonesLineHi)
 
   // 关节球（位置随动画逐帧更新；头为椭圆，同 2D 渲染）
   const base = hasFrames.value ? props.frames[0] : props.joints
   for (const [name, p] of Object.entries(base)) {
-    const isHead = name === 'head' || name === 'head_left' || name === 'head_right'
-    const r = isHead ? props.headRadius : Math.max(props.headRadius * 0.35, 3)
+    const r = isHead(name) ? props.headRadius : Math.max(props.headRadius * 0.35, 3)
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(r, 12, 12),
-      new THREE.MeshBasicMaterial({ color: isHead ? 0x9dd6ff : 0xfff1a8 }),
+      new THREE.MeshBasicMaterial({ color: baseColor(name) }),
     )
-    if (isHead) mesh.scale.set(0.78, 1, 0.78) // 高 > 宽 的椭圆（Y-up：Y 为高）
+    if (isHead(name)) mesh.scale.set(0.78, 1, 0.78) // 高 > 宽 的椭圆（Y-up：Y 为高）
+    meshBaseScale.set(name, mesh.scale.clone())
     jointsMeshes.set(name, mesh)
     skeletonGroup.add(mesh)
   }
   scene.add(skeletonGroup)
-  updateSkeleton(base)
+  applyHighlight()
 }
 
 /** 增量更新骨架到指定帧（动画时只改 position，不重建几何，GPU 友好） */
@@ -133,14 +147,76 @@ function updateSkeleton(joints) {
     if (p) { mesh.visible = true; mesh.position.set(...flip(p)) }
     else mesh.visible = false
   }
-  const positions = []
+  const positions = [], positionsHi = []
   for (const [a, b] of props.bones) {
     const pa = joints[a], pb = joints[b]
     if (!pa || !pb) continue
-    positions.push(...flip(pa), ...flip(pb))
+    const hi = hiSet.has(a) || hiSet.has(b)
+    ;(hi ? positionsHi : positions).push(...flip(pa), ...flip(pb))
   }
   bonesGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
   bonesGeo.attributes.position.needsUpdate = true
+  bonesGeoHi.setAttribute('position', new THREE.Float32BufferAttribute(positionsHi, 3))
+  bonesGeoHi.attributes.position.needsUpdate = true
+}
+
+const isHead = (n) => n === 'head' || n === 'head_left' || n === 'head_right'
+const baseColor = (n) => (isHead(n) ? 0x9dd6ff : 0xfff1a8)
+
+/** 计算高亮集合：选中关节 + 其全部后代（bones 父→子边推导） */
+function computeHighlightSet(name) {
+  const set = new Set()
+  if (!name) return set
+  set.add(name)
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const [a, b] of props.bones) {
+      if (set.has(a) && !set.has(b)) { set.add(b); changed = true }
+    }
+  }
+  return set
+}
+
+/** 应用高亮：选中关节及其子树关节球变橙放大，相关骨头线切到橙色高亮线 */
+function applyHighlight() {
+  if (!skeletonGroup) return
+  hiSet = computeHighlightSet(props.highlight)
+  for (const [name, mesh] of jointsMeshes) {
+    const hi = hiSet.has(name)
+    mesh.material.color.set(hi ? 0xffb020 : baseColor(name))
+    const base = meshBaseScale.get(name)
+    if (base) {
+      const f = hi ? 1.45 : 1
+      mesh.scale.set(base.x * f, base.y * f, base.z * f)
+    }
+  }
+  updateSkeleton(hasFrames.value ? props.frames[frameIndex.value] : props.joints)
+}
+
+/** 点击拾取关节球 → emit('pick', name)（射线到球心距离 + 放宽阈值，小球也好点） */
+function pickAt(e) {
+  if (!renderer || !jointsMeshes.size) return
+  const rect = renderer.domElement.getBoundingClientRect()
+  const ndc = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1,
+  )
+  const raycaster = new THREE.Raycaster()
+  raycaster.setFromCamera(ndc, camera)
+  const ray = raycaster.ray
+  const tmp = new THREE.Vector3()
+  let best = null, bestD = Infinity
+  for (const [name, mesh] of jointsMeshes) {
+    if (!mesh.visible) continue
+    mesh.getWorldPosition(tmp)
+    const d = ray.distanceToPoint(tmp)
+    const base = meshBaseScale.get(name) || mesh.scale
+    const radius = (mesh.geometry.parameters?.radius || 4) * Math.max(base.x, base.y, base.z)
+    const hitR = Math.max(radius * 2.5, 8) // 放宽拾取半径，小球也好点中
+    if (d < hitR && d < bestD) { bestD = d; best = name }
+  }
+  if (best) emit('pick', best)
 }
 
 function fitCamera() {
@@ -288,6 +364,9 @@ watch(() => props.joints, () => {
   fitCamera()
   renderer.render(scene, camera)
 }, { deep: true })
+
+// 高亮变化 → 应用高亮（不重建场景）
+watch(() => props.highlight, () => { if (scene) applyHighlight() })
 
 onMounted(init)
 
