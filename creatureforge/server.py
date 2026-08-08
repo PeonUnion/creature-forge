@@ -81,6 +81,8 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             return self._motion3d_get()
         if p.startswith("/api/skin3d/"):
             return self._skin3d_get()
+        if p.startswith("/api/skins"):
+            return self._skins_get()
         if p.startswith("/api/skeleton3d/"):
             return self._skeleton3d_get()
         if p.startswith("/api/"):
@@ -93,6 +95,8 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             return self._species_post()
         if p.startswith("/api/presets"):
             return self._presets_post()
+        if p.startswith("/api/skins"):
+            return self._skins_post()
         self.send_error(404)
 
     def do_PUT(self) -> None:
@@ -101,6 +105,8 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
                 return self._species_post()
             if p.startswith("/api/presets"):
                 return self._presets_post()
+            if p.startswith("/api/skins"):
+                return self._skins_post()
         self.send_error(404)
 
     def do_DELETE(self) -> None:
@@ -108,6 +114,8 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             return self._species_delete()
         if self.path.startswith("/api/presets"):
             return self._presets_delete()
+        if self.path.startswith("/api/skins"):
+            return self._skins_delete()
 
     # -- 3D API ---------------------------------------------------------
     # 阶段 1/2：3D 骨架 + 3D 动作，任意视角（yaw）正交投影。
@@ -409,6 +417,63 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             self.api.preset_delete(parts[0])
         except KeyError:
             return self._json({"ok": False, "error": f"preset not found: {parts[0]}"}, 404)
+        return self._json({"ok": True, "deleted": parts[0]})
+
+    # -- skins API -----------------------------------------------------
+
+    def _skins_get(self) -> None:
+        """GET /api/skins — list; /api/skins/new?species= — 新建空白表单; /api/skins/<id> — 详情。"""
+        from urllib.parse import urlparse
+        parts = _path_parts(urlparse(self.path).path, "/api/skins")
+        if not parts:
+            return self._json({"skins": self.api.skins_list()})
+        if parts[0] == "new":
+            from urllib.parse import parse_qs, urlparse
+            qs = parse_qs(urlparse(self.path).query)
+            sp = qs.get("species", ["human"])[0]
+            try:
+                return self._json(self.api.skin_new(sp))
+            except Exception as e:
+                return self._json({"ok": False, "error": str(e)}, 400)
+        try:
+            return self._json(self.api.skin_get(parts[0]))
+        except KeyError:
+            return self._json({"ok": False, "error": f"skin not found: {parts[0]}"}, 404)
+
+    def _skins_post(self) -> None:
+        """POST /api/skins — create; PUT /api/skins/<id> — update。"""
+        from urllib.parse import urlparse
+        parts = _path_parts(urlparse(self.path).path, "/api/skins")
+        try:
+            body = self._read_body()
+        except Exception as e:
+            return self._json({"ok": False, "error": str(e)}, 400)
+        if not parts:
+            try:
+                sid = self.api.skin_create(body)
+            except FileExistsError as e:
+                return self._json({"ok": False, "error": str(e)}, 409)
+            except (ValueError, KeyError) as e:
+                return self._json({"ok": False, "error": str(e)}, 400)
+            return self._json({"ok": True, "created": sid})
+        try:
+            sid = self.api.skin_update(parts[0], body)
+        except KeyError:
+            return self._json({"ok": False, "error": f"skin not found: {parts[0]}"}, 404)
+        except Exception as e:
+            return self._json({"ok": False, "error": str(e)}, 400)
+        return self._json({"ok": True, "updated": sid})
+
+    def _skins_delete(self) -> None:
+        """DELETE /api/skins/<id> — delete skin。"""
+        from urllib.parse import urlparse
+        parts = _path_parts(urlparse(self.path).path, "/api/skins")
+        if not parts:
+            return self._json({"ok": False, "error": "missing id"}, 400)
+        try:
+            self.api.skin_delete(parts[0])
+        except KeyError:
+            return self._json({"ok": False, "error": f"skin not found: {parts[0]}"}, 404)
         return self._json({"ok": True, "deleted": parts[0]})
 
     def _preset3d_get(self) -> None:

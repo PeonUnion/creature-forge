@@ -27,6 +27,8 @@ const props = defineProps({
   frames: { type: Array, default: () => [] },          // 每帧 flat 顶点 [x,y,z,...]
   fps: { type: Number, default: 6 },
   center: { type: Array, default: () => [0, 0, 0] },
+  material: { type: Object, default: () => ({}) },     // 皮肤材质覆盖 {albedo, roughness, metallic}（默认用 mesh.materials）
+  bodyScale: { type: Number, default: 1 },             // 胖瘦缩放（>1 增宽 / <1 收窄，只缩放 x/z 保持身高）
 })
 const emit = defineEmits(['ready', 'view'])
 
@@ -101,11 +103,15 @@ function buildSkin() {
     geo.setAttribute('normal', new THREE.BufferAttribute(nm, 3))
   }
   if (m.indices && m.indices.length) geo.setIndex(m.indices)
-  // 皮肤材质（albedo 来自外挂 materials.json，默认肤色）
-  const albedo = (m.materials && m.materials.albedo) || '#c9a58c'
+  // 皮肤材质（albedo 来自皮肤 materials 覆盖 > 外挂 mesh.materials > 默认肤色）
+  const albedo = (props.material && props.material.albedo)
+    || (m.materials && m.materials.albedo) || '#c9a58c'
+  const rough = (props.material && props.material.roughness != null)
+    ? props.material.roughness : ((m.materials && m.materials.roughness) || 0.6)
+  const metal = (props.material && props.material.metallic != null)
+    ? props.material.metallic : ((m.materials && m.materials.metallic) || 0.0)
   const mat = new THREE.MeshStandardMaterial({
-    color: albedo, roughness: (m.materials && m.materials.roughness) || 0.6,
-    metalness: (m.materials && m.materials.metallic) || 0.0, side: THREE.DoubleSide,
+    color: albedo, roughness: rough, metalness: metal, side: THREE.DoubleSide,
   })
   skinMesh = new THREE.Mesh(geo, mat)
   skinMesh.frustumCulled = false  // 防剔除导致网格消失
@@ -117,13 +123,17 @@ function buildSkin() {
   scene.add(skinMesh)
 }
 
-/** 增量更新顶点到指定帧（只改 position + 重算法线，不重建几何） */
+/** 增量更新顶点到指定帧（只改 position + 重算法线，不重建几何；应用皮肤胖瘦缩放） */
 function updateFrame(i) {
   const f = props.frames[i]
   if (!f || !posAttr) return
   const arr = posAttr.array
-  for (let k = 0; k < f.length; k++) {
-    arr[k] = (k % 3 === 1) ? -f[k] : f[k]  // Y-down → Y-up
+  const s = props.bodyScale || 1
+  const cx = fitTarget.x, cz = fitTarget.z
+  for (let k = 0; k < f.length; k += 3) {
+    arr[k] = (f[k] - cx) * s + cx      // x（胖瘦增宽/收窄，相对中心）
+    arr[k + 1] = -f[k + 1]             // Y-down → Y-up
+    arr[k + 2] = (f[k + 2] - cz) * s + cz  // z
   }
   posAttr.needsUpdate = true
   if (skinMesh) skinMesh.geometry.computeVertexNormals()
@@ -160,6 +170,7 @@ function fitCamera() {
   scene.add(grid)
 
   setView(30, 12, 1)
+  if (skinMesh) updateFrame(0)  // 首帧应用皮肤胖瘦缩放（fitTarget 就绪后）
 }
 
 function viewFromCamera() {
@@ -258,6 +269,18 @@ watch(() => props.frames, (f) => {
     fitCamera()
     renderer.render(scene, camera)
   }
+}, { deep: true })
+
+// 皮肤参数变化（材质/胖瘦）→ 实时更新网格
+watch(() => [props.material, props.bodyScale], () => {
+  if (!scene || !skinMesh) return
+  if (props.material && Object.keys(props.material).length) {
+    skinMesh.material.color.set(props.material.albedo || 0xc9a58c)
+    skinMesh.material.roughness = props.material.roughness ?? 0.6
+    skinMesh.material.metalness = props.material.metallic ?? 0
+    skinMesh.material.needsUpdate = true
+  }
+  updateFrame(frameIndex.value)
 }, { deep: true })
 
 onMounted(init)

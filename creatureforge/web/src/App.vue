@@ -13,6 +13,9 @@
         <router-link to="/presets">
           <span class="nav-icon">🎨</span> 预设
         </router-link>
+        <router-link to="/skins">
+          <span class="nav-icon">🧍</span> 皮肤
+        </router-link>
         <router-link to="/skin">
           <span class="nav-icon">🧍</span> 蒙皮
         </router-link>

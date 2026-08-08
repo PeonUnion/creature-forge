@@ -120,4 +120,24 @@ export const api = {
 
   /** 预设实时渲染（live：未保存的 body/actions 预览） */
   preset3dLive: (qs) => raw(`/api/preset3d/live?${qs}`),
+
+  // -- 皮肤 Skin（独立入口：皮肤 = 物种外观实例，皮肤参数 + 材质） --
+
+  /** 皮肤列表 @returns {Promise<{skins: import('../../models').SkinSummary[]}>} */
+  skins: () => raw('/api/skins'),
+
+  /** 皮肤详情（皮肤值 + schema_info） */
+  skinDetail: (id) => raw(`/api/skins/${encodeURIComponent(id)}`),
+
+  /** 新建皮肤空白表单（含 schema） */
+  skinNew: (speciesId) => raw(`/api/skins/new?species=${encodeURIComponent(speciesId)}`),
+
+  /** 创建皮肤 */
+  createSkin: (data) => raw('/api/skins', json(data)),
+
+  /** 更新皮肤 */
+  updateSkin: (id, data) => raw(`/api/skins/${encodeURIComponent(id)}`, json_put(data)),
+
+  /** 删除皮肤 */
+  deleteSkin: (id) => raw(`/api/skins/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 }

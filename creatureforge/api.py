@@ -18,8 +18,10 @@ from pathlib import Path
 
 from .config import DEFAULT_DATA_DIR
 from .interfaces import Api
-from .models import Motion, MotionListItem, Preset, PresetSummary, SpeciesDetail, SpeciesListItem, SpeciesSkeleton
+from .models import (Motion, MotionListItem, Preset, PresetSummary, Skin, SkinSummary,
+                     SpeciesDetail, SpeciesListItem, SpeciesSkeleton)
 from .presets import PresetService
+from .skins import SkinService
 from .species import SpeciesService
 
 
@@ -30,11 +32,12 @@ def image_to_data_url(img) -> str:
 
 
 class ApiService:
-    """统一 API 实现：组合物种 + 预设服务，并承担 3D 渲染（CLI/HTTP 共用）。"""
+    """统一 API 实现：组合物种 + 预设 + 皮肤服务，并承担 3D 渲染（CLI/HTTP 共用）。"""
 
-    def __init__(self, species_root: Path, presets_root: Path) -> None:
+    def __init__(self, species_root: Path, presets_root: Path, skins_root: Path | None = None) -> None:
         self.species = SpeciesService(species_root)
         self.presets = PresetService(presets_root, self.species)
+        self.skins = SkinService(skins_root or (presets_root.parent / "skins"), self.species)
 
     # ------------------------------------------------------------------
     # 物种
@@ -104,6 +107,28 @@ class ApiService:
 
     def preset_delete(self, preset_id: str) -> str:
         return self.presets.delete(preset_id)
+
+    # ------------------------------------------------------------------
+    # 皮肤
+    # ------------------------------------------------------------------
+
+    def skins_list(self) -> list[SkinSummary]:
+        return self.skins.list()
+
+    def skin_get(self, skin_id: str) -> dict:
+        return self.skins.get(skin_id)
+
+    def skin_new(self, species_id: str) -> dict:
+        return self.skins.new_schema(species_id)
+
+    def skin_create(self, data: Skin) -> str:
+        return self.skins.create(data)
+
+    def skin_update(self, skin_id: str, data: Skin) -> str:
+        return self.skins.update(skin_id, data)
+
+    def skin_delete(self, skin_id: str) -> str:
+        return self.skins.delete(skin_id)
 
     # ------------------------------------------------------------------
     # 3D 渲染

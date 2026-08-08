@@ -1,0 +1,35 @@
+{
+  "schema": "creatureforge_skin_params_v1",
+  "description": "物种皮肤参数 schema：皮肤外观可调参数 + 默认材质（数据驱动，皮肤定义由此派生）。",
+  "params": {
+    "skin_tone": {
+      "label": "肤色",
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "default": 0.5,
+      "desc": "0 = 苍白，1 = 深肤色"
+    },
+    "fat": {
+      "label": "体脂",
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "default": 0.3,
+      "desc": "体型胖瘦（高 = 更胖，网格半径外扩）"
+    },
+    "muscle": {
+      "label": "肌肉",
+      "min": 0,
+      "max": 1,
+      "step": 0.01,
+      "default": 0.5,
+      "desc": "体型壮实（高 = 更壮，网格半径略扩）"
+    }
+  },
+  "materials": {
+    "albedo": "#c9a58c",
+    "roughness": 0.6,
+    "metallic": 0.0
+  }
+}

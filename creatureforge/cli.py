@@ -133,6 +133,23 @@ def cmd_preset(args) -> None:
         print("deleted:", svc.preset_delete(args.id))
 
 
+def cmd_skin(args) -> None:
+    svc = api()
+    if args.sub == "list":
+        for s in svc.skins_list():
+            print(f"  {s['skin_id']:20s} {s.get('title',''):24s} [{s['species']}]", file=sys.stdout)
+    elif args.sub == "new":
+        _json(svc.skin_new(args.species))
+    elif args.sub == "show":
+        _json(svc.skin_get(args.id))
+    elif args.sub == "create":
+        print("created:", svc.skin_create(_load_json_arg(args)))
+    elif args.sub == "update":
+        print("updated:", svc.skin_update(args.id, _load_json_arg(args)))
+    elif args.sub == "delete":
+        print("deleted:", svc.skin_delete(args.id))
+
+
 def cmd_render(args) -> None:
     svc = api()
     out = Path(args.out)
@@ -227,6 +244,16 @@ def build_parser() -> argparse.ArgumentParser:
     p1 = psp.add_parser("update"); p1.add_argument("id"); p1.add_argument("--json"); p1.add_argument("--file")
     p1 = psp.add_parser("delete"); p1.add_argument("id")
 
+    # skin
+    sp_ = sub.add_parser("skin", help="皮肤管理（独立入口，基于物种，可多实例）")
+    ssp_ = sp_.add_subparsers(dest="sub", required=True)
+    ssp_.add_parser("list")
+    s1_ = ssp_.add_parser("new"); s1_.add_argument("species", help="新建空白皮肤表单（含 schema）")
+    s1_ = ssp_.add_parser("show"); s1_.add_argument("id")
+    s1_ = ssp_.add_parser("create"); s1_.add_argument("--json"); s1_.add_argument("--file")
+    s1_ = ssp_.add_parser("update"); s1_.add_argument("id"); s1_.add_argument("--json"); s1_.add_argument("--file")
+    s1_ = ssp_.add_parser("delete"); s1_.add_argument("id")
+
     # render
     rp = sub.add_parser("render", help="3D 渲染到文件")
     rsub = rp.add_subparsers(dest="mode", required=True)
@@ -266,6 +293,8 @@ def main(argv: list[str] | None = None) -> int:
             cmd_action(args)
         elif args.cmd == "preset":
             cmd_preset(args)
+        elif args.cmd == "skin":
+            cmd_skin(args)
         elif args.cmd == "render":
             cmd_render(args)
         elif args.cmd == "upgrade":

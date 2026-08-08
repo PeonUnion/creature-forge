@@ -10,7 +10,8 @@
 - **预设系统**：`presets.py`（CRUD + schema 派生，值存 `data/presets/<id>.json`（数据目录默认仓库根 data/，--data-dir 可覆盖），schema 由物种派生不落盘）；前端独立入口（PresetsView：体型参数 + 动作幅度 + 实时预览）；CLI `preset new/create/list/...`。
 - **dev 模式**：后端 `--dev`（CORS + OPTIONS）、前端 `pnpm run dev`（Vite 5173，proxy `/api` → 8765），前后端分离热更新；`pnpm approve-builds --all` 解决 esbuild 构建忽略问题。
 - **3D 相机改造**：轨道相机（预览图拖拽旋转 + 快捷按钮 + 收纳面板），`useOrbitDrag`（isDragging 必须 ref）。
-- **清理过时内容**：skins / packaging / build / webflow 发布链 / 旧参考资产；保留 `prototype/`（Godot demo）、`scripts/mocap/`、`verify_motions3d.py`。
+- **清理过时内容**：packaging / build / webflow 发布链 / 旧参考资产；保留 `prototype/`（Godot demo）、`scripts/mocap/`、`verify_motions3d.py`。
+- **皮肤系统**：`skins.py`（CRUD + schema 派生，值存 `data/skins/<id>.json`，schema 由物种 `skin/skin_params.json` 派生不落盘）；前端独立入口（SkinsView：材质 + 皮肤参数 + 蒙皮预览）；CLI `skin new/create/list/...`；蒙皮数据 `data/species/<id>/skin/`（mesh + weights + skin_params）；LBS 蒙皮 `skeleton3d.skinned_vertices()` + glTF 动画导出（GLTFExporter）。
 - **前端动作预览**：`MotionPreview.vue` 封装播放 + 导出 GIF（后端 `gif=1`）。
 - **全量测试**：E2E 11 用例全通过（物种/预设 CRUD、渲染、GIF、相机、多动作预览+过渡段）；CLI 流程化测试 5 用例（`scripts/test_cli.py`，物种/动作/预设/渲染/错误处理，数据隔离 `test-data-cli/`）。
 - **跨平台发布**：pyinstaller 构建嵌入 web 的 `creature-forge-server`/`creature-forge-cli` 二进制；GitHub Actions（`.github/workflows/release.yml`）矩阵产出 Linux/Windows/macOS，`v*` tag 触发（含 `-rc/-beta/-alpha` 预览版）；Release Notes 由 git 历史自动生成（`scripts/gen_changelog.py`，Conventional Commits 分组），无需维护 CHANGELOG。
@@ -20,10 +21,11 @@
 | 路径 | 说明 |
 |---|---|
 | `creatureforge/api.py / interfaces.py / cli.py / server.py` | 统一 Api（CLI+HTTP 共享）+ 薄路由 + CLI |
-| `creatureforge/species.py / presets.py / skeleton3d.py / motion.py` | 物种 / 预设 / 3D 引擎（FK/IK）/ DSL |
-| `data/species/human/` | 骨骼 + default（CMU 体型）+ actions3d/（walk/run/jump/crawl/idle 真实动捕） |
+| `creatureforge/species.py / presets.py / skins.py / skeleton3d.py / motion.py` | 物种 / 预设 / 皮肤 / 3D 引擎（FK/IK/LBS 蒙皮）/ DSL |
+| `data/species/human/` | 骨骼 + default（CMU 体型）+ actions3d/（walk/run/jump/crawl/idle 真实动捕）+ skin/（mesh + weights + skin_params） |
 | `data/presets/` | 预设（物种实例：body + actions；运行时用户数据） |
-| `creatureforge/web/` | Vue 3 前端（物种 / 预设独立入口） |
+| `data/skins/` | 皮肤（物种实例：materials + params；运行时用户数据） |
+| `creatureforge/web/` | Vue 3 前端（物种 / 预设 / 皮肤 独立入口） |
 | `scripts/mocap/` | CMU 工具链（bvh_parser / rebuild_skeleton_cmu / extract_kin / compare_motion） |
 | `scripts/verify_motions3d.py` | 3D 动作验证（8 项检查，数据驱动） |
 | `scripts/test_cli.py` | CLI 流程化测试（unittest，物种/动作/预设/渲染，数据隔离 test-data-cli/） |
@@ -34,10 +36,11 @@
 
 ## 三、下一步（待办）
 
-1. **[P0] run / jump 同样用 CMU 真实数据**（`16_35.bvh` run、`16_01.bvh` jump），方法同 walk（`rebuild_skeleton_cmu.py` 扩展或新增生成）。
-2. **[P1] 其他动作**（idle 等）按真实/合理数据补全，并给每个动作定义 `params`（动作幅度 schema）。
-3. **[P2] Godot demo 接入 3D 动作**：确认 `prototype/` 消费 `dist/<id>/` 制品的流程（`scripts/build_demo.sh`）。
-4. **[P2] Web 前端**：预设实时预览打磨、多动作切换、物种 default 编辑 UI。
+1. **[P0] 皮肤应用闭环**：皮肤在物种动作预览 / glTF 导出中可选（多皮肤下拉切换 + 应用材质/体态到蒙皮预览与导出）。
+2. **[P1] 皮肤 CLI 用例**：`scripts/test_cli.py` 加 `skin` 流程化用例（数据隔离 test-data-cli/）。
+3. **[P2] E2E 覆盖皮肤**：SkinsView 新建/编辑/保存/删除 + 蒙皮预览断言。
+4. **[P2] Godot demo 接入 3D 动作**：确认 `prototype/` 消费 `dist/<id>/` 制品的流程（`scripts/build_demo.sh`）。
+5. **[P2] Web 前端**：预设实时预览打磨、多动作切换、物种 default 编辑 UI。
 
 ## 四、关键命令
 
