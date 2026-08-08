@@ -193,6 +193,9 @@ class ApiService:
     def wizard_set_pose(self, species_id: str, name: str, pos: list[float]) -> dict:
         return self.wizard.set_pose(species_id, name, pos)
 
+    def wizard_apply_pose(self, species_id: str, positions: dict | None = None) -> dict:
+        return self.wizard.apply_pose(species_id, positions)
+
     def wizard_rotate(self, species_id: str, *, axis: str = "z", angle: float = 90,
                       joint: str | None = None) -> dict:
         return self.wizard.rotate(species_id, axis=axis, angle=angle, joint=joint)

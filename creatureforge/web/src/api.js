@@ -122,6 +122,10 @@ export const api = {
   wizardPoseSet: (id, name, pos) =>
     raw(`/api/wizard/${encodeURIComponent(id)}/pose/set`, json({ name, pos })),
 
+  /** 整体写入默认姿态坐标（保存按钮统一提交） */
+  wizardPoseApply: (id, positions) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/apply_pose`, json({ positions })),
+
   /** 姿态快速操作：旋转（axis x/y/z，joint 空=整体） */
   wizardRotate: (id, { axis = 'z', angle = 90, joint = null } = {}) =>
     raw(`/api/wizard/${encodeURIComponent(id)}/rotate`, json({ axis, angle, joint })),

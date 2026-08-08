@@ -494,6 +494,16 @@ class SpeciesWizard:
         self._save_draft(self._draft_path(species_id), draft)
         return self._view(draft)
 
+    def apply_pose(self, species_id: str, positions: dict | None = None) -> dict:
+        """整体写入默认姿态坐标（前端本地暂存后，保存按钮统一落草稿）。"""
+        draft = self._load_draft(species_id)
+        pos3d = draft.setdefault("default", {}).setdefault("positions_3d", {})
+        for name, pos in (positions or {}).items():
+            if name in draft["nodes"] and isinstance(pos, (list, tuple)) and len(pos) == 3:
+                pos3d[name] = [float(v) for v in pos]
+        self._save_draft(self._draft_path(species_id), draft)
+        return self._view(draft)
+
     # -- 姿态快速操作（旋转 / 平移，避免笔直朝天等姿势问题） --
 
     @staticmethod
