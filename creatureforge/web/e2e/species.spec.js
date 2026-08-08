@@ -106,8 +106,8 @@ test.describe('物种管理（全量 E2E）', () => {
   test('物种 CRUD：新建 → 详情 → 编辑改名称 → 删除', async ({ page }) => {
     const sid = `e2e_sp_${Date.now()}`
     // 新建物种（最小合法骨架：joints + bones_3d + chains + 默认参数）
-    // 注意：.page-header 与右侧空状态区都有「新建物种」按钮，用 .page-header 限定
-    await page.locator('.page-header button', { hasText: '新建物种' }).click()
+    // 注意：默认「新建物种（向导）」；此处用保留的「高级 JSON」专家模式做最小骨架断言
+    await page.locator('.page-header button', { hasText: '高级 JSON' }).click()
     await expect(page.locator('.crumb-now', { hasText: '新建' })).toBeVisible()
     await page.locator('.el-form-item', { hasText: '物种 ID' }).locator('input').fill(sid)
     await page.locator('.el-form-item', { hasText: '名称' }).locator('input').fill('E2E 测试物种')
