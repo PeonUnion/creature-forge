@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import math
 from pathlib import Path
 
@@ -177,6 +178,54 @@ class ApiService:
                 "fps": int(motion.get("fps", 6)) or 6,
                 "center": list(skel3d.get("center", (480.0, 300.0, 0.0))),
                 "head_radius": float(skel3d.get("head_radius", 22.0))}
+
+    # ------------------------------------------------------------------
+    # 蒙皮（顶点蒙皮预览：网格 + 权重外挂，前端每帧更新顶点）
+    # ------------------------------------------------------------------
+
+    def skin3d_data(self, action_id: str, *, species: str | None = None,
+                    body: dict | None = None, params: dict | None = None) -> dict:
+        """返回蒙皮网格 + 动作每帧变形顶点（前端 WebGL 蒙皮预览，不渲染 PNG）。
+
+        mesh 为绑定姿态网格（indices/uvs/normals/vertex_count/materials），
+        frames 为每帧 flat 顶点列表（[x,y,z,...]，Y-down 项目坐标，由 LBS 计算）；
+        boneNames/bindJoints 供前端叠加骨骼显示；数据全部外挂 skin/。
+        """
+        from .skeleton3d import build_skeleton_3d, skinned_vertices
+        if species:
+            motion = self.species.get_action(species, action_id)
+            species_id = species
+        else:
+            found = self.species.find_action(action_id)
+            if not found:
+                raise KeyError(f"3D action not found: {action_id}")
+            species_id, motion = found
+        skel3d = build_skeleton_3d(species_id, body=body, species_root=self.species._root)
+        skin = self._load_skin(species_id)
+        n = int(motion.get("frame_count", 8))
+        p = params or {}
+        frames = [skinned_vertices(skel3d, motion, i, skin, params=p) for i in range(n)]
+        mesh = skin["mesh"]
+        return {"ok": True,
+                "mesh": {"indices": mesh["indices"], "uvs": mesh["uvs"],
+                         "normals": mesh["normals"], "vertex_count": mesh["vertex_count"],
+                         "materials": mesh.get("materials", {})},
+                "boneNames": skin["weights"]["boneNames"],
+                "weights": skin["weights"]["perVertex"],
+                "bindJoints": {j: list(v) for j, v in skel3d["joints"].items()},
+                "fk_tree": {j: p for j, p in (skel3d.get("fk_tree") or {}).items()},
+                "bones": [list(b) for b in skel3d["bones"]],
+                "frames": frames,
+                "frame_count": n,
+                "fps": int(motion.get("fps", 6)) or 6,
+                "center": list(skel3d.get("center", (480.0, 300.0, 0.0)))}
+
+    def _load_skin(self, species_id: str) -> dict:
+        """加载外挂蒙皮数据（skin/mesh.json + skin/weights.json）。"""
+        root = self.species._root / species_id / "skin"
+        mesh = json.loads((root / "mesh.json").read_text(encoding="utf-8"))
+        weights = json.loads((root / "weights.json").read_text(encoding="utf-8"))
+        return {"mesh": mesh, "weights": weights}
 
     def render_skeleton3d(self, species_id: str, *, yaw: float = 0, pitch: float = 0,
                           dist: float = 1.0, pan_x: float = 0, pan_y: float = 0,

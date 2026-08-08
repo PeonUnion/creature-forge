@@ -92,6 +92,9 @@ export const api = {
   renderMotion3d: (id, qs) => raw(`/api/motion3d/${encodeURIComponent(id)}?${qs}`),
   motion3dData: (id, qs = '') => raw(`/api/motion3d/${encodeURIComponent(id)}?${qs}&data=1`),
 
+  /** 蒙皮：网格 + 动作每帧变形顶点（WebGL 蒙皮预览，LBS 后端计算） */
+  skin3dData: (id, qs = '') => raw(`/api/skin3d/${encodeURIComponent(id)}?${qs}`),
+
   // -- 预设 Preset（独立入口：预设 = 物种实例，调整体型 + 动作幅度） --
 
   /** 预设列表 @returns {Promise<{presets: import('../../models').PresetSummary[]}>} */

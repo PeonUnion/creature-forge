@@ -468,6 +468,109 @@ def resolve_follow3d(explicit: dict[str, list[float]],
 
 
 # --------------------------------------------------------------------------
+# 蒙皮（顶点蒙皮 / LBS）
+# --------------------------------------------------------------------------
+# 网格与权重外挂（data/species/human/skin/）：mesh.json（绑定姿态顶点/索引/UV/法线）
+# + weights.json（每顶点绑 ≤4 骨权重）。绑定姿态 = 骨架基准（default positions_3d），
+# 故绑定姿态下各骨局部旋转≈0；LBS 每顶点按骨骼世界变换混合，数据全外挂不硬编码。
+
+
+def _fk_world_pose(skel3d: dict, motion3d: dict, index: int, params: dict | None = None
+                   ) -> tuple[dict[str, list[float]], dict[str, list[list[float]]], list[float]]:
+    """当前帧每关节世界变换：{joint: 世界位置} + {joint: 世界旋转3x3} + root 位置。"""
+    from creatureforge.motion import _build_signals, _eval, _resolve_params
+    ctx = {
+        "params": _resolve_params(motion3d, params),
+        "index": index,
+        "frame_count": int(motion3d.get("frame_count", 8)),
+        "phase": math.tau * (index % int(motion3d.get("frame_count", 8))) / int(motion3d.get("frame_count", 8)),
+        "signals": _build_signals(motion3d),
+    }
+    out = {n: [x, y, z] for n, (x, y, z) in skel3d["joints"].items()}
+    root3d = motion3d.get("root3d", {})
+    rdx = _eval(root3d.get("x", 0.0), ctx)
+    rdy = _eval(root3d.get("y", 0.0), ctx)
+    rdz = _eval(root3d.get("z", 0.0), ctx)
+    fk3d = motion3d.get("fk3d")
+    fk_tree = skel3d.get("fk_tree") or {}
+    fk_local = skel3d.get("fk_local", {})
+    root = fk3d.get("root") if fk3d else next((j for j, p in fk_tree.items() if p is None), None)
+    offsets = motion3d.get("offsets3d", {})
+    rcomp = offsets.get(root, {}) if isinstance(offsets, dict) else {}
+    root_pos = [out[root][0] + rdx + _eval(rcomp.get("x", 0.0), ctx),
+                out[root][1] + rdy + _eval(rcomp.get("y", 0.0), ctx),
+                out[root][2] + rdz + _eval(rcomp.get("z", 0.0), ctx)]
+    rotations: dict[str, tuple[float, float, float]] = {}
+    for j, comp in (fk3d or {}).get("rotations3d", {}).items():
+        if j in fk_tree:
+            rotations[j] = (_eval(comp.get("x_rot", 0.0), ctx),
+                            _eval(comp.get("y_rot", 0.0), ctx),
+                            _eval(comp.get("z_rot", 0.0), ctx))
+    # FK 累积（与 solve_fk3d 一致：位置用父累积旋转，自身旋转只影响子）
+    order = [root]
+    seen = {root}
+    for j in order:
+        for c, p in fk_tree.items():
+            if p == j and c not in seen:
+                seen.add(c)
+                order.append(c)
+    I = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+    pos_map: dict[str, list[float]] = {}
+    R_map: dict[str, list[list[float]]] = {}
+    for j in order:
+        Mj = _rot_mat(*rotations.get(j, (0.0, 0.0, 0.0)))
+        p = fk_tree[j]
+        if p is None:
+            pos_map[j] = list(root_pos)
+            R_map[j] = Mj
+        else:
+            Rp = R_map.get(p, I)
+            v = fk_local.get(j, [0.0, 0.0, 0.0])
+            dv = _mat_vec(Rp, v)
+            pos_map[j] = [pos_map[p][0] + dv[0], pos_map[p][1] + dv[1], pos_map[p][2] + dv[2]]
+            R_map[j] = _mat_mul(Rp, Mj)
+    return pos_map, R_map, root_pos
+
+
+def skinned_vertices(skel3d: dict, motion3d: dict, index: int, skin: dict,
+                     params: dict | None = None) -> list[float]:
+    """LBS 顶点蒙皮：skin 网格每顶点按骨骼世界变换混合（绑 ≤4 骨，权重外挂）。
+
+    返回 flat 顶点列表（[x,y,z, x,y,z, ...]，Y-down 项目坐标）。
+    """
+    pos_map, R_map, _ = _fk_world_pose(skel3d, motion3d, index, params)
+    mesh = skin["mesh"]
+    wdata = skin["weights"]
+    verts = mesh["vertices"]
+    per = wdata["perVertex"]
+    bn = wdata["boneNames"]
+    bind = skel3d["joints"]
+    nv = mesh["vertex_count"]
+    out_flat = [0.0] * (nv * 3)
+    for vi in range(nv):
+        vx, vy, vz = verts[3 * vi], verts[3 * vi + 1], verts[3 * vi + 2]
+        ax = ay = az = 0.0
+        for bi, wt in zip(per[vi]["indices"], per[vi]["weights"]):
+            jn = bn[bi]
+            bj = bind.get(jn)
+            if bj is None:
+                ax += wt * vx
+                ay += wt * vy
+                az += wt * vz
+                continue
+            rv = _mat_vec(R_map.get(jn, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
+                          [vx - bj[0], vy - bj[1], vz - bj[2]])
+            pj = pos_map.get(jn, [0.0, 0.0, 0.0])
+            ax += wt * (rv[0] + pj[0])
+            ay += wt * (rv[1] + pj[1])
+            az += wt * (rv[2] + pj[2])
+        out_flat[3 * vi] = round(ax, 3)
+        out_flat[3 * vi + 1] = round(ay, 3)
+        out_flat[3 * vi + 2] = round(az, 3)
+    return out_flat
+
+
+# --------------------------------------------------------------------------
 # 3D 动作引擎（阶段 2 核心）
 # --------------------------------------------------------------------------
 # 动作在 3D 空间定义：offsets3d[关节] = {x/y/z 轴偏移表达式}，

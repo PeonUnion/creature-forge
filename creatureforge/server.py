@@ -79,6 +79,8 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             return self._motions3d_list()
         if p.startswith("/api/motion3d/"):
             return self._motion3d_get()
+        if p.startswith("/api/skin3d/"):
+            return self._skin3d_get()
         if p.startswith("/api/skeleton3d/"):
             return self._skeleton3d_get()
         if p.startswith("/api/"):
@@ -192,6 +194,26 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
                 frame=frame, gif=gif, sprite=sprite,
                 frames=qs.get("frames", ["0"])[0] in ("1", "true"))
             return self._json(result)
+        except KeyError as e:
+            return self._json({"ok": False, "error": str(e)}, 404)
+        except Exception as e:
+            return self._json({"ok": False, "error": str(e)}, 500)
+
+    def _skin3d_get(self) -> None:
+        """GET /api/skin3d/<action>?species=human&body=&params= — 蒙皮网格 + 每帧变形顶点（WebGL 预览）。"""
+        from urllib.parse import parse_qs, urlparse
+        path_only = urlparse(self.path).path
+        parts = _path_parts(path_only, "/api/skin3d")
+        if len(parts) != 1:
+            self.send_error(404)
+            return
+        qs = parse_qs(urlparse(self.path).query)
+        species_q = qs.get("species", [None])[0]
+        body = json.loads(qs.get("body", ["{}"])[0])
+        params = json.loads(qs.get("params", ["{}"])[0])
+        try:
+            return self._json(self.api.skin3d_data(
+                parts[0], species=species_q, body=body, params=params))
         except KeyError as e:
             return self._json({"ok": False, "error": str(e)}, 404)
         except Exception as e:
