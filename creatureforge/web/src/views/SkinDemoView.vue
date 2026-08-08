@@ -21,7 +21,7 @@
 
     <SkinnedViewer v-if="data"
       :mesh="data.mesh" :frames="data.frames" :fps="data.fps"
-      :center="data.center" :bones="data.bones" :bindJoints="data.bindJoints"
+      :center="data.center"
       ref="viewer" />
 
     <div class="stats" v-if="data">

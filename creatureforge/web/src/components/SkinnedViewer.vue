@@ -12,6 +12,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import * as THREE from 'three'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
+import { GIFEncoder, quantize, applyPalette } from 'gifenc'
 
 /**
  * 蒙皮预览（WebGL，Three.js Mesh + 每帧更新顶点）。
@@ -19,22 +20,19 @@ import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls
  * - 数据：后端 skin3d_data（mesh 绑定姿态网格 + frames 每帧 flat 顶点，LBS 后端算好）
  *   （Y-down 项目坐标，此处翻转为 Y-up）
  * - 蒙皮：BufferGeometry 每帧更新 position + 重算法线（顶点跟随骨骼，由后端动作驱动）
- * - 交互：TrackballControls（左键=转动、右键=平移、滚轮=缩放）+ 播放/暂停
- * - 可选叠加绑定骨架线（半透明）辅助观察形变
+ * - 交互：TrackballControls（左键=转动、右键=平移、滚轮=缩放）+ 播放/暂停 + 导出 GIF
  */
 const props = defineProps({
   mesh: { type: Object, default: () => ({}) },        // {indices, uvs, normals, vertex_count, materials}
   frames: { type: Array, default: () => [] },          // 每帧 flat 顶点 [x,y,z,...]
   fps: { type: Number, default: 6 },
   center: { type: Array, default: () => [0, 0, 0] },
-  bindJoints: { type: Object, default: () => ({}) },   // 绑定骨架（叠加参考线）
-  bones: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['ready', 'view'])
 
 const hasFrames = computed(() => props.frames && props.frames.length > 0)
 const mountEl = ref(null)
-let renderer, scene, camera, controls, skinMesh = null, boneLine = null, boneGeo = null
+let renderer, scene, camera, controls, skinMesh = null
 let posAttr = null, fitTarget = new THREE.Vector3(), fitDist = 300
 let rafId = null, resizeObs = null, animTimer = null
 const playing = ref(false)
@@ -86,7 +84,6 @@ function init() {
 function buildSkin() {
   // 清理旧网格
   if (skinMesh) { scene.remove(skinMesh); skinMesh.geometry.dispose(); skinMesh.material.dispose(); skinMesh = null }
-  if (boneLine) { scene.remove(boneLine); boneGeo = null; boneLine = null }
   const m = props.mesh || {}
   const first = props.frames[0] || []
   const nv = m.vertex_count || Math.floor(first.length / 3) || 0
@@ -111,29 +108,13 @@ function buildSkin() {
     metalness: (m.materials && m.materials.metallic) || 0.0, side: THREE.DoubleSide,
   })
   skinMesh = new THREE.Mesh(geo, mat)
-  skinMesh.frustumCulled = false  // 防剔除导致网格消失（只剩骨架线）
+  skinMesh.frustumCulled = false  // 防剔除导致网格消失
   // 灯光
   scene.add(new THREE.AmbientLight(0xffffff, 0.65))
   const dl = new THREE.DirectionalLight(0xffffff, 0.85)
   dl.position.set(300, 400, 300)
   scene.add(dl)
   scene.add(skinMesh)
-  // 绑定骨架参考线（静态半透明，帮助观察蒙皮形变）
-  if (props.bones && props.bones.length && Object.keys(props.bindJoints).length) {
-    boneGeo = new THREE.BufferGeometry()
-    const pts = []
-    for (const [a, b] of props.bones) {
-      if (props.bindJoints[a] && props.bindJoints[b]) {
-        pts.push(...flip(props.bindJoints[a]), ...flip(props.bindJoints[b]))
-      }
-    }
-    boneGeo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3))
-    boneLine = new THREE.LineSegments(boneGeo, new THREE.LineBasicMaterial({
-      color: 0x9dd6ff, transparent: true, opacity: 0.45,
-    }))
-    boneLine.frustumCulled = false
-    scene.add(boneLine)
-  }
 }
 
 /** 增量更新顶点到指定帧（只改 position + 重算法线，不重建几何） */
@@ -211,6 +192,48 @@ function animate() {
   renderer.render(scene, camera)
 }
 
+/**
+ * 导出 GIF（所见即所得：当前 Three.js 视图 = 当前相机 + 蒙皮网格逐帧截帧）。
+ * 返回 GIF Blob；null 表示无动画帧。
+ */
+async function exportGif({ fps, maxWidth = 640, onProgress } = {}) {
+  if (!hasFrames.value || !renderer) return null
+  const fpsNum = fps || props.fps || 6
+  const delay = Math.max(20, Math.round(1000 / fpsNum))
+  const wasPlaying = playing.value
+  if (wasPlaying) togglePlay()
+  try {
+    const srcW = renderer.domElement.width
+    const srcH = renderer.domElement.height
+    const scale = Math.min(1, maxWidth / (srcW || 1))
+    const w = Math.max(1, Math.round(srcW * scale))
+    const h = Math.max(1, Math.round(srcH * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w; canvas.height = h
+    const ctx = canvas.getContext('2d')
+    const gif = GIFEncoder()
+    for (let i = 0; i < props.frames.length; i++) {
+      updateFrame(i)
+      renderer.render(scene, camera)
+      const img = new Image()
+      const url = renderer.domElement.toDataURL('image/png')
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url })
+      ctx.clearRect(0, 0, w, h)
+      ctx.drawImage(img, 0, 0, w, h)
+      const { data } = ctx.getImageData(0, 0, w, h)
+      const palette = quantize(data, 256)
+      const index = applyPalette(data, palette)
+      gif.writeFrame(index, w, h, { palette, delay })
+      if (onProgress) onProgress(i + 1, props.frames.length)
+      await new Promise(r => setTimeout(r, 0))  // 让 UI 保持响应
+    }
+    gif.finish()
+    return new Blob([gif.bytes()], { type: 'image/gif' })
+  } finally {
+    if (wasPlaying) togglePlay()
+  }
+}
+
 watch(() => props.frames, (f) => {
   if (!scene) return
   if (f && f.length) {
@@ -231,7 +254,7 @@ onBeforeUnmount(() => {
   if (renderer) { renderer.dispose(); renderer.domElement.remove() }
 })
 
-defineExpose({ setView })
+defineExpose({ setView, exportGif })
 </script>
 
 <style scoped>

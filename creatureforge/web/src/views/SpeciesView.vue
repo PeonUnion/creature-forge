@@ -126,12 +126,12 @@
                 <el-radio-button value="skin">蒙皮</el-radio-button>
               </el-radio-group>
               <el-button size="small" type="primary" @click="renderAction" :loading="motionRenderLoading" icon="Refresh">渲染</el-button>
-              <el-button size="small" :disabled="!motionData" :loading="gifLoading" icon="Download" @click="exportMotionGif">导出 GIF</el-button>
+              <el-button size="small" :disabled="!(motionData || skinData)" :loading="gifLoading" icon="Download" @click="exportMotionGif">导出 GIF</el-button>
             </div>
           </div>
           <SkinnedViewer v-if="previewMode==='skin' && skinData" ref="skinViewer"
             :mesh="skinData.mesh" :frames="skinData.frames" :fps="skinData.fps"
-            :center="skinData.center" :bones="skinData.bones" :bindJoints="skinData.bindJoints"
+            :center="skinData.center"
             @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
           <Skeleton3DViewer v-else-if="motionData" ref="motionViewer"
             :frames="motionData.frames" :bones="motionData.bones"
@@ -435,18 +435,21 @@ function onPreviewMode() {
   renderAction()
 }
 
-/** 导出 GIF：基于当前 Three.js 视图逐帧截帧（所见即所得，含地面网格），前端 gifenc 编码 */
+/** 导出 GIF：基于当前 Three.js 视图逐帧截帧（所见即所得），前端 gifenc 编码 */
 async function exportMotionGif() {
-  if (!motionData.value || !motionViewer.value) { ElMessage.warning('请先渲染动作'); return }
+  const viewer = previewMode.value === 'skin' ? skinViewer.value : motionViewer.value
+  if (!viewer || !(previewMode.value === 'skin' ? skinData.value : motionData.value)) {
+    ElMessage.warning('请先渲染动作'); return
+  }
   gifLoading.value = true
   try {
-    const blob = await motionViewer.value.exportGif()
+    const blob = await viewer.exportGif()
     if (blob) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a'); a.href = url; a.download = `${actionEditor.value.motion_id}.gif`
       document.body.appendChild(a); a.click(); a.remove()
-      URL.revokeObjectURL(url)
-      ElMessage.success('GIF 已导出（当前 Three.js 视图，含网格）')
+      setTimeout(() => URL.revokeObjectURL(url), 3000)
+      ElMessage.success('GIF 已导出（当前 Three.js 视图）')
     } else ElMessage.error('GIF 生成失败')
   } catch(e) { ElMessage.error(e.message) }
   gifLoading.value = false
