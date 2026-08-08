@@ -103,6 +103,8 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             return self._skins_post()
         if p.startswith("/api/wizard/"):
             return self._wizard_post()
+        if p.startswith("/api/motion3d"):
+            return self._motion3d_post()
         self.send_error(404)
 
     def do_PUT(self) -> None:
@@ -213,7 +215,22 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             return self._json({"ok": False, "error": str(e)}, 500)
 
-    def _skin3d_get(self) -> None:
+    def _motion3d_post(self) -> None:
+        """POST /api/motion3d/live — 实时求动作某一帧（body: {action, species, index}）。"""
+        from urllib.parse import urlparse
+        if urlparse(self.path).path != "/api/motion3d/live":
+            self.send_error(404)
+            return
+        body = self._read_body()
+        action = body.get("action") or {}
+        species = body.get("species") or ""
+        index = int(body.get("index", 0))
+        if not action or not species:
+            return self._json({"ok": False, "error": "action/species required"}, 400)
+        try:
+            return self._json(self.api.motion3d_live(action, species=species, index=index))
+        except Exception as e:
+            return self._json({"ok": False, "error": str(e)}, 500)
         """GET /api/skin3d/<action>?preset=&skin_id=&species=&body=&params= — 蒙皮网格 + 每帧变形顶点。
         GET /api/skin3d/export/<action>?preset=&skin_id= — 导出 .glb（骨骼 + 蒙皮 + 动作动画）。
         """

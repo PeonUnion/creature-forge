@@ -47,7 +47,9 @@
         </div>
         <div class="head-actions">
           <el-button size="small" @click="actionEditor = null">关闭</el-button>
-          <el-button size="small" type="primary" @click="saveAction" :loading="saving" icon="Check">保存动作</el-button>
+          <el-button size="small" type="primary" @click="saveAction" :loading="saving" icon="Check">
+            保存动作<span v-if="dirty" class="dirty-dot" title="有未保存的修改" />
+          </el-button>
         </div>
       </div>
 
@@ -90,6 +92,44 @@
           </div>
         </el-tab-pane>
 
+        <!-- 逐帧编辑：一帧一帧编辑关节旋转，确认全部帧后保存 -->
+        <el-tab-pane label="🎬 逐帧编辑" name="frame">
+          <div v-if="frameJoints && frameJoints.length" class="frame-grid">
+            <div class="wiz-preview">
+              <Skeleton3DViewer v-if="frameData" :joints="frameData.joints" :bones="frameData.bones"
+                :head-radius="frameData.head_radius" :center="frameData.center" />
+              <div v-else class="preview-empty"><p>切换帧实时显示该帧姿态（未保存编辑）</p></div>
+            </div>
+            <div class="frame-controls">
+              <div class="sec">
+                <div class="sec-t">帧导航（第 {{ frameIdx + 1 }} / {{ frameCount }} 帧）</div>
+                <div class="row3 wrap">
+                  <el-button size="small" :disabled="frameIdx <= 0" @click="gotoFrame(0)">⏮ 首帧</el-button>
+                  <el-button size="small" :disabled="frameIdx <= 0" @click="gotoFrame(frameIdx - 1)">◀</el-button>
+                  <el-input-number v-model="frameIdx" size="small" :min="0" :max="frameCount - 1" @change="onFrameIdx" style="flex: 1" />
+                  <el-button size="small" :disabled="frameIdx >= frameCount - 1" @click="gotoFrame(frameIdx + 1)">▶</el-button>
+                  <el-button size="small" :disabled="frameIdx >= frameCount - 1" @click="gotoFrame(frameCount - 1)">末帧 ⏭</el-button>
+                </div>
+                <p class="hint small">逐帧编辑关节旋转（写回 fk3d.rotations3d 的 table 波形），确认全部帧后点「保存动作」。无 table 的轴为表达式驱动，只读。</p>
+              </div>
+              <div class="sec">
+                <div class="sec-t">第 {{ frameIdx + 1 }} 帧 · 关节旋转（弧度，X / Y / Z）</div>
+                <div class="fr-table">
+                  <div v-for="r in frameRotRows" :key="r.joint" class="fr-row">
+                    <span class="mono fr-joint">{{ r.joint }}</span>
+                    <template v-for="ax in ['x', 'y', 'z']" :key="ax">
+                      <el-input-number v-if="r.axes[ax]" v-model="r.axes[ax].val" size="small" :step="0.05"
+                        @change="writeFrame(r.joint, ax)" />
+                      <span v-else class="fr-na">—</span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="empty-inline">该动作没有 fk3d.rotations3d 关键帧；可在高级 JSON 中定义后「应用 JSON」再逐帧编辑。</div>
+        </el-tab-pane>
+
         <el-tab-pane label="👁 动作预览" name="preview">
           <div class="preview-controls">
             <CameraControls v-model="cam" compact />
@@ -109,7 +149,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api.js'
 import CameraControls from '../components/CameraControls.vue'
@@ -123,7 +163,15 @@ const actionList = ref([])
 const actionEditor = ref(null)
 const actionJson = ref('')
 const saving = ref(false)
+const dirty = ref(false)  // 有未保存修改（本地暂存，点「保存动作」确认）
 const atab = ref('def')
+
+// 逐帧编辑状态
+const frameIdx = ref(0)
+const frameCount = ref(1)
+const frameData = ref(null)
+const frameRotRows = ref([])
+const frameJoints = ref([])
 
 const motionData = ref(null)
 const motionViewer = ref(null)
@@ -137,7 +185,69 @@ watch(atab, (m) => {
   if (m === 'advanced' && actionEditor.value) {
     actionJson.value = JSON.stringify(actionEditor.value, null, 2)
   }
+  if (m === 'frame' && actionEditor.value) {
+    frameIdx.value = 0
+    loadFrameRows()
+    refreshFramePreview()
+  }
 })
+
+// 动作编辑本地暂存：任何修改标记 dirty（点保存才落盘）
+watch(actionEditor, () => { if (actionEditor.value) dirty.value = true }, { deep: true })
+
+// -- 逐帧编辑：table 波形读写 + 当前帧实时预览 --
+function findTable(expr) {
+  if (expr == null) return null
+  if (Array.isArray(expr)) {
+    for (const it of expr) { const r = findTable(it); if (r) return r }
+    return null
+  }
+  if (typeof expr !== 'object') return null
+  for (const [k, v] of Object.entries(expr)) {
+    if (k === 'table' && Array.isArray(v)) return v
+    const r = findTable(v)
+    if (r) return r
+  }
+  return null
+}
+function loadFrameRows() {
+  const act = actionEditor.value
+  frameCount.value = Math.max(1, Number(act?.frame_count) || 1)
+  const fk = act?.fk3d?.rotations3d || {}
+  const joints = Object.keys(fk)
+  frameJoints.value = joints
+  if (!joints.length) { frameRotRows.value = []; frameData.value = null; return }
+  frameRotRows.value = joints.map(j => {
+    const comp = fk[j] || {}
+    const axes = {}
+    for (const ax of ['x', 'y', 'z']) {
+      const tbl = findTable(comp[ax + '_rot'])
+      axes[ax] = tbl ? { tbl, val: Number(tbl[frameIdx.value] ?? 0) } : null
+    }
+    return { joint: j, axes }
+  })
+}
+function writeFrame(joint, axis) {
+  const row = frameRotRows.value.find(r => r.joint === joint)
+  const a = row?.axes?.[axis]
+  if (!a?.tbl) return
+  a.tbl[frameIdx.value] = Number(a.val) || 0   // 写回 table 波形
+  dirty.value = true
+  refreshFramePreview()                        // 当前帧旋转变化 → 刷新预览
+}
+async function gotoFrame(i) {
+  frameIdx.value = Math.max(0, Math.min(Number(i) || 0, frameCount.value - 1))
+  loadFrameRows()
+  await refreshFramePreview()
+}
+async function onFrameIdx() { await gotoFrame(frameIdx.value) }
+async function refreshFramePreview() {
+  if (!actionEditor.value) return
+  try {
+    const r = await api.motion3dLive(actionEditor.value, props.speciesId, frameIdx.value)
+    frameData.value = r && r.ok ? r : null
+  } catch (e) { frameData.value = null }
+}
 
 function addParam() {
   if (!actionEditor.value) return
@@ -175,7 +285,10 @@ async function openAction(actionId) {
     actionJson.value = JSON.stringify(act, null, 2)
     atab.value = 'def'
     motionData.value = null
+    frameData.value = null
+    frameJoints.value = []
     cam.value = { ...cam.value, yaw: 0, pitch: 0 }
+    await nextTick(); dirty.value = false
   } catch (e) { ElMessage.error(e.message) }
 }
 
@@ -188,6 +301,9 @@ function startCreateAction() {
   actionJson.value = JSON.stringify(actionEditor.value, null, 2)
   atab.value = 'def'
   motionData.value = null
+  frameData.value = null
+  frameJoints.value = []
+  nextTick(() => { dirty.value = false })
 }
 
 async function saveAction() {
@@ -212,6 +328,7 @@ async function saveAction() {
       await api.createAction(props.speciesId, data)
     }
     ElMessage.success('动作已保存')
+    dirty.value = false
     actionEditor.value = null
     await loadSpecies()
     emit('saved')
@@ -275,6 +392,14 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .actions-view { padding: 4px 0; }
+.dirty-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f56c6c; margin-left: 6px; vertical-align: middle; }
+.frame-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.frame-controls { display: flex; flex-direction: column; gap: 14px; max-height: calc(100vh - 260px); overflow-y: auto; }
+.fr-table { display: flex; flex-direction: column; gap: 4px; max-height: 55vh; overflow-y: auto; }
+.fr-row { display: flex; align-items: center; gap: 6px; font-size: .8rem; }
+.fr-joint { width: 150px; flex: 0 0 auto; }
+.fr-row .el-input-number { width: 112px; flex: 0 0 auto; }
+.fr-na { width: 112px; flex: 0 0 auto; display: inline-flex; justify-content: center; color: #c0c4cc; }
 .acts-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .crumb { font-size: .9rem; }
 .crumb-root { color: #909399; } .crumb-sep { color: #c0c4cc; } .crumb-now { font-weight: 600; }

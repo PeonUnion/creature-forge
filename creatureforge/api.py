@@ -349,6 +349,20 @@ class ApiService:
                 "center": list(skel3d.get("center", (480.0, 300.0, 0.0))),
                 "head_radius": float(skel3d.get("head_radius", 22.0))}
 
+    def motion3d_live(self, action: dict, *, species: str, index: int = 0) -> dict:
+        """实时求动作某一帧 3D 关节数据（前端逐帧编辑预览用，动作数据直接传入未保存的编辑）。"""
+        from .skeleton3d import build_skeleton_3d, pose_3d
+        skel3d = build_skeleton_3d(species, species_root=self.species._root)
+        n = int(action.get("frame_count", 8))
+        i = min(max(int(index or 0), 0), n - 1)
+        pose = pose_3d(skel3d, action, i)
+        return {"ok": True,
+                "joints": {k: list(v) for k, v in pose.items()},
+                "bones": [list(b) for b in skel3d["bones"]],
+                "center": list(skel3d.get("center", (480.0, 300.0, 0.0))),
+                "head_radius": float(skel3d.get("head_radius", 22.0)),
+                "frame_count": n, "index": i}
+
     # ------------------------------------------------------------------
     # 蒙皮（顶点蒙皮预览：网格 + 权重外挂，前端每帧更新顶点）
     # ------------------------------------------------------------------

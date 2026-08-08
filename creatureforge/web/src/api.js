@@ -167,6 +167,10 @@ export const api = {
   renderMotion3d: (id, qs) => raw(`/api/motion3d/${encodeURIComponent(id)}?${qs}`),
   motion3dData: (id, qs = '') => raw(`/api/motion3d/${encodeURIComponent(id)}?${qs}&data=1`),
 
+  /** 实时求动作某一帧（逐帧编辑预览；动作数据直接传未保存的编辑） */
+  motion3dLive: (action, species, index = 0) =>
+    raw('/api/motion3d/live', json({ action, species, index })),
+
   /** 蒙皮：网格 + 动作每帧变形顶点（WebGL 蒙皮预览，LBS 后端计算） */
   skin3dData: (id, qs = '') => raw(`/api/skin3d/${encodeURIComponent(id)}?${qs}`),
 
