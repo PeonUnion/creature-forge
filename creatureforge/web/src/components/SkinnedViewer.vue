@@ -92,10 +92,17 @@ function buildSkin() {
   const nv = m.vertex_count || Math.floor(first.length / 3) || 0
   if (!nv) return
   const geo = new THREE.BufferGeometry()
-  posAttr = new THREE.Float32BufferAttribute(new Float32Array(first), 3)
+  // 首帧顶点 + 法线：Y-down → Y-up（与 updateFrame/fitCamera 一致，否则首帧网格倒置/出视野）
+  const firstYup = new Float32Array(first)
+  for (let k = 1; k < firstYup.length; k += 3) firstYup[k] = -firstYup[k]
+  posAttr = new THREE.Float32BufferAttribute(firstYup, 3)
   geo.setAttribute('position', posAttr)
   if (m.uvs && m.uvs.length) geo.setAttribute('uv', new THREE.Float32BufferAttribute(m.uvs, 2))
-  if (m.normals && m.normals.length) geo.setAttribute('normal', new THREE.Float32BufferAttribute(m.normals, 3))
+  if (m.normals && m.normals.length) {
+    const nm = new Float32Array(m.normals)
+    for (let k = 1; k < nm.length; k += 3) nm[k] = -nm[k]
+    geo.setAttribute('normal', new THREE.BufferAttribute(nm, 3))
+  }
   if (m.indices && m.indices.length) geo.setIndex(m.indices)
   // 皮肤材质（albedo 来自外挂 materials.json，默认肤色）
   const albedo = (m.materials && m.materials.albedo) || '#c9a58c'
@@ -104,6 +111,7 @@ function buildSkin() {
     metalness: (m.materials && m.materials.metallic) || 0.0, side: THREE.DoubleSide,
   })
   skinMesh = new THREE.Mesh(geo, mat)
+  skinMesh.frustumCulled = false  // 防剔除导致网格消失（只剩骨架线）
   // 灯光
   scene.add(new THREE.AmbientLight(0xffffff, 0.65))
   const dl = new THREE.DirectionalLight(0xffffff, 0.85)
