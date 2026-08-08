@@ -11,6 +11,7 @@ export default async function globalSetup() {
 
   rmSync(testData, { recursive: true, force: true })
   cpSync(path.join(repoRoot, 'data', 'species'), path.join(testData, 'species'), { recursive: true })
+  cpSync(path.join(repoRoot, 'data', 'templates'), path.join(testData, 'templates'), { recursive: true })
   mkdirSync(path.join(testData, 'presets'), { recursive: true })
 }
 

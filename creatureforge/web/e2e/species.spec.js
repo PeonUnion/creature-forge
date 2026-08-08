@@ -19,10 +19,11 @@ test.describe('物种管理（全量 E2E）', () => {
     // 普通/高级双页签
     await expect(page.locator('.mode-tabs .el-tabs__item', { hasText: '普通（语义化）' })).toBeVisible()
     await expect(page.locator('.mode-tabs .el-tabs__item', { hasText: '高级 JSON' })).toBeVisible()
-    // 骨架结构 3D 预览（WebGL canvas 非空白）
-    await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 30_000 })
+    // 骨架结构 3D 预览（WebGL canvas 非空白；限定当前可见 tab，避免匹配隐藏 tab 的 canvas）
+    await expect(page.locator('.sk3d:visible canvas')).toBeVisible({ timeout: 30_000 })
     await expect.poll(() => page.evaluate(() => {
-      const c = document.querySelector('.sk3d canvas')
+      // 取当前可见 tab 的 canvas（offsetParent 非 null 表示可见）
+      const c = Array.from(document.querySelectorAll('.sk3d canvas')).find(cv => cv.offsetParent !== null)
       const gl = c && (c.getContext('webgl2') || c.getContext('webgl'))
       if (!c || !gl) return 0
       const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight
@@ -51,7 +52,7 @@ test.describe('物种管理（全量 E2E）', () => {
     // 预览 tab → 渲染
     await page.locator('.el-tabs__item', { hasText: '动作预览' }).click()
     await page.locator('.preview-controls button', { hasText: '渲染' }).click()
-    await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 40_000 })
+    await expect(page.locator('.sk3d:visible canvas')).toBeVisible({ timeout: 40_000 })
     await expect(page.locator('.sk3d-badge', { hasText: '16' })).toBeVisible()
     // GIF 导出（浏览器下载）
     const dl = page.waitForEvent('download', { timeout: 60_000 })
@@ -67,11 +68,11 @@ test.describe('物种管理（全量 E2E）', () => {
       .getByRole('button', { name: '编辑' }).click()
     await page.locator('.el-tabs__item', { hasText: '动作预览' }).click()
     await page.locator('.preview-controls button', { hasText: '渲染' }).click()
-    await expect(page.locator('.sk3d canvas')).toBeVisible({ timeout: 40_000 })
+    await expect(page.locator('.sk3d:visible canvas')).toBeVisible({ timeout: 40_000 })
     // 初始：正面高亮（openAction 默认 yaw=0）
     await expect(page.locator('button', { hasText: '正面' })).toHaveClass(/primary/)
     // 拖拽 → TrackballControls 转动 → 相机角度变化
-    const stage = page.locator('.sk3d')
+    const stage = page.locator('.sk3d:visible').first()
     await stage.scrollIntoViewIfNeeded()
     const box = await stage.boundingBox()
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)

@@ -1,0 +1,20 @@
+{
+  "schema": "creatureforge_wizard_v1",
+  "species_id": "loong",
+  "morph": "custom",
+  "title": "青龙",
+  "description": "不加载任何模板，从空骨架逐步构建任意形态（龙/蛇/多足/触手/机械…）。第一步新增根关节，再逐级挂接子关节。",
+  "nodes": {},
+  "chains": {},
+  "param_chains": {},
+  "default": {
+    "canvas": {
+      "width": 960,
+      "height": 600,
+      "floor_y": 470.0
+    },
+    "head_radius": 12.5,
+    "positions_3d": {}
+  },
+  "actions": []
+}
