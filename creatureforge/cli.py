@@ -66,6 +66,21 @@ def _parse_kv(s: str | None) -> dict:
     return out
 
 
+def _parse_pos(s: str | None) -> list[float] | None:
+    """解析 'x,y,z' → [x,y,z]（向导关节/姿态坐标）。"""
+    if not s:
+        return None
+    try:
+        return [float(x) for x in s.split(",")]
+    except ValueError:
+        raise ValueError(f"非法坐标: {s}（期望 x,y,z）")
+
+
+def _parse_list(s: str | None) -> list[str]:
+    """解析 'a,b,c' → [a,b,c]（向导链/参数链关节）。"""
+    return [x.strip() for x in (s or "").split(",") if x.strip()]
+
+
 def _load_json_arg(args) -> dict:
     if getattr(args, "json", None):
         return json.loads(args.json)
@@ -99,6 +114,165 @@ def cmd_species(args) -> None:
         print("updated:", svc.species_update(args.id, _load_json_arg(args)))
     elif args.sub == "delete":
         print("deleted:", svc.species_delete(args.id))
+    # -- 物种分步向导（模板可选择 + custom 从 0 开始） --
+    elif args.sub == "templates":
+        for t in svc.templates_list():
+            print(f"  {t['morph_id']:12s} {t['title']:18s} 关节{t['joint_count']:3d} 链{t['chain_count']:3d} 动作{len(t['actions'])} — {t['description'][:44]}")
+    elif args.sub == "wizard":
+        cmd_wizard(svc, args.species)
+    elif args.sub == "wizard-init":
+        _json(svc.wizard_init(args.species, morph_id=args.template, title=args.title, description=args.desc))
+    elif args.sub == "joint-add":
+        _json(svc.wizard_add_joint(args.species, args.name, parent=args.parent, pos=_parse_pos(args.pos), sym=args.sym))
+    elif args.sub == "joint-rm":
+        _json(svc.wizard_remove_joint(args.species, args.name))
+    elif args.sub == "joint-rename":
+        _json(svc.wizard_rename_joint(args.species, args.old, args.new))
+    elif args.sub == "joint-parent":
+        _json(svc.wizard_set_parent(args.species, args.name, args.parent))
+    elif args.sub == "limb-mirror":
+        _json(svc.wizard_mirror_limb(args.species, args.source, to_prefix=args.to_prefix))
+    elif args.sub == "chain-add":
+        _json(svc.wizard_add_chain(args.species, args.name, _parse_list(args.joints)))
+    elif args.sub == "chain-rm":
+        _json(svc.wizard_remove_chain(args.species, args.name))
+    elif args.sub == "pose-set":
+        _json(svc.wizard_set_pose(args.species, args.name, _parse_pos(args.pos)))
+    elif args.sub == "canvas":
+        _json(svc.wizard_set_canvas(args.species, width=args.width, height=args.height, floor_y=args.floor_y))
+    elif args.sub == "param-add":
+        _json(svc.wizard_add_param_chain(args.species, args.name, _parse_list(args.joints), anchor=args.anchor, label=args.label))
+    elif args.sub == "wizard-commit":
+        print("created:", svc.wizard_commit(args.species))
+    elif args.sub == "wizard-discard":
+        print("discarded:", svc.wizard_discard(args.species))
+
+
+def cmd_wizard(svc, species_id: str) -> None:
+    """交互式物种向导：选模板/从 0 → 逐步补全骨架 → commit。"""
+    print(f"== CreatureForge 物种向导：{species_id} ==")
+    tmpls = svc.templates_list()
+    print("可选形态模板（输入编号；0 = 从 0 开始空骨架）：")
+    for i, t in enumerate(tmpls, 1):
+        print(f"  [{i}] {t['title']}（{t['morph_id']}）· 关节{t['joint_count']} · 动作 {len(t['actions'])}")
+    try:
+        choice = input("选择模板 [0=从 0 开始]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+    morph = "custom"
+    if choice.isdigit() and 0 < int(choice) <= len(tmpls):
+        morph = tmpls[int(choice) - 1]["morph_id"]
+    try:
+        title = input(f"名称 [{species_id}]: ").strip() or species_id
+        desc = input("描述: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+    _json(svc.wizard_init(species_id, morph_id=morph, title=title, description=desc))
+    print(f"✓ 已初始化（模板 {morph}）。逐步补全骨架，指令示例：")
+    print("    joint add pelvis                 ← 第一个关节（根，无 parent）")
+    print("    joint add head --parent neck --pos 480,115,-4")
+    print("    mirror arm_left                  ← 一键镜像对称肢")
+    print("    chain add spine --joints head,neck,chest,pelvis")
+    print("    pose set head --pos 480,115,-4")
+    print("    param add head_scale --joints head --anchor neck --label 头大小")
+    print("    list · done（提交）· quit（放弃）")
+    while True:
+        try:
+            line = input("骨架> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if not line:
+            continue
+        if line in ("done", "commit", "next"):
+            break
+        if line in ("quit", "exit", "discard"):
+            svc.wizard_discard(species_id)
+            print("已放弃")
+            return
+        try:
+            _wizard_cmd(svc, species_id, line)
+        except Exception as e:
+            print(f"✗ {e}")
+    try:
+        svc.wizard_commit(species_id)
+        print(f"✓ 物种 {species_id} 已创建（骨架 + 默认姿态 + 预设 schema）")
+        print(f"  下一步：creatureforge action wizard --species {species_id}")
+    except Exception as e:
+        print(f"✗ 提交失败: {e}")
+
+
+def _wizard_cmd(svc, species_id: str, line: str) -> None:
+    """解析向导交互行（骨架操作子命令）。"""
+    toks = line.split()
+    if not toks:
+        return
+    cmd = toks[0]
+    args_ = toks[1:]
+
+    def opt(name: str) -> str | None:
+        for i, t in enumerate(args_):
+            if t == name:
+                return args_[i + 1] if i + 1 < len(args_) else None
+        return None
+
+    def status():
+        v = svc.wizard_get(species_id)
+        print(f"  → 关节{v['joint_count']} 骨{v['bone_count']} 链{v['chain_count']} 参数链{v['param_chain_count']}")
+
+    if cmd in ("joint", "j"):
+        sub = args_[0] if args_ else "add"
+        if sub == "add":
+            name = args_[1] if len(args_) > 1 else opt("--name")
+            svc.wizard_add_joint(species_id, name, parent=opt("--parent"),
+                                 pos=_parse_pos(opt("--pos")), sym=opt("--sym"))
+            print(f"  ✓ 加关节 {name}")
+        elif sub == "rm" and len(args_) > 1:
+            svc.wizard_remove_joint(species_id, args_[1])
+            print(f"  ✓ 删关节 {args_[1]}")
+        elif sub == "rename" and len(args_) > 2:
+            svc.wizard_rename_joint(species_id, args_[1], args_[2])
+            print("  ✓ 重命名")
+        elif sub == "parent" and len(args_) > 1:
+            svc.wizard_set_parent(species_id, args_[1], opt("--parent"))
+            print("  ✓ 改父级")
+        else:
+            print("  joint add <name> [--parent p] [--pos x,y,z] [--sym s] | joint rm/rename/parent")
+            return
+        status()
+    elif cmd in ("mirror", "m"):
+        svc.wizard_mirror_limb(species_id, args_[0], to_prefix=opt("--to-prefix"))
+        print(f"  ✓ 镜像 {args_[0]}")
+        status()
+    elif cmd in ("chain", "c"):
+        sub = args_[0] if args_ else "list"
+        if sub == "add":
+            name = args_[1] if len(args_) > 1 else opt("--name")
+            svc.wizard_add_chain(species_id, name, _parse_list(opt("--joints")))
+            print(f"  ✓ 链 {name}")
+            status()
+        elif sub == "rm" and len(args_) > 1:
+            svc.wizard_remove_chain(species_id, args_[1])
+            print(f"  ✓ 删链 {args_[1]}")
+            status()
+        else:
+            print("  chains:", svc.wizard_get(species_id)["chains"])
+    elif cmd in ("pose", "p"):
+        svc.wizard_set_pose(species_id, args_[0], _parse_pos(opt("--pos")))
+        print(f"  ✓ 姿态 {args_[0]}")
+    elif cmd in ("param", "param-add"):
+        name = args_[0] if args_ else opt("--name")
+        svc.wizard_add_param_chain(species_id, name, _parse_list(opt("--joints")),
+                                   anchor=opt("--anchor"), label=opt("--label"))
+        print(f"  ✓ 参数链 {name}")
+        status()
+    elif cmd in ("list", "show", "status"):
+        v = svc.wizard_get(species_id)
+        print(f"  关节: {list(v['nodes'])}")
+        print(f"  链: {v['chains']}")
+        print(f"  参数链: {list(v['param_chains'])}")
+    else:
+        print("  ✗ 未知指令。支持：joint add/rm/rename/parent · mirror · chain add/rm · pose · param · list")
 
 
 def cmd_action(args) -> None:
@@ -224,16 +398,38 @@ def build_parser() -> argparse.ArgumentParser:
                    version=f"CreatureForge CLI {updater.current_version()} ({updater.current_platform()})")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    # species
-    sp = sub.add_parser("species", help="物种管理")
+    # species（含分步向导：模板可选择 + custom 从 0 开始）
+    sp = sub.add_parser("species", help="物种管理（含分步向导）")
     ssp = sp.add_subparsers(dest="sub", required=True)
     ssp.add_parser("list", help="物种列表")
+    ssp.add_parser("templates", help="列形态模板（可选起步，含从 0 开始）")
+    wiz = ssp.add_parser("wizard", help="交互式分步向导（建物种）")
+    wiz.add_argument("species", help="新物种 id")
     s1 = ssp.add_parser("show"); s1.add_argument("id")
     s1 = ssp.add_parser("schema"); s1.add_argument("id", help="预设 schema")
     s1 = ssp.add_parser("default"); s1.add_argument("id")
     c = ssp.add_parser("create"); c.add_argument("--json"); c.add_argument("--file")
     c = ssp.add_parser("update"); c.add_argument("id"); c.add_argument("--json"); c.add_argument("--file")
     d = ssp.add_parser("delete"); d.add_argument("id")
+    # -- 向导分步（非交互，可脚本化；与 Web/HTTP 同一套 WizardService） --
+    w1 = ssp.add_parser("wizard-init"); w1.add_argument("species")
+    w1.add_argument("--template", default="custom", help="形态模板 id（默认 custom=从 0 开始）")
+    w1.add_argument("--title", default=""); w1.add_argument("--desc", default="")
+    w1 = ssp.add_parser("joint-add"); w1.add_argument("species"); w1.add_argument("name")
+    w1.add_argument("--parent"); w1.add_argument("--pos", help="x,y,z"); w1.add_argument("--sym")
+    w1 = ssp.add_parser("joint-rm"); w1.add_argument("species"); w1.add_argument("name")
+    w1 = ssp.add_parser("joint-rename"); w1.add_argument("species"); w1.add_argument("old"); w1.add_argument("new")
+    w1 = ssp.add_parser("joint-parent"); w1.add_argument("species"); w1.add_argument("name"); w1.add_argument("--parent")
+    w1 = ssp.add_parser("limb-mirror"); w1.add_argument("species"); w1.add_argument("source"); w1.add_argument("--to-prefix")
+    w1 = ssp.add_parser("chain-add"); w1.add_argument("species"); w1.add_argument("name"); w1.add_argument("--joints", required=True, help="逗号分隔关节")
+    w1 = ssp.add_parser("chain-rm"); w1.add_argument("species"); w1.add_argument("name")
+    w1 = ssp.add_parser("pose-set"); w1.add_argument("species"); w1.add_argument("name"); w1.add_argument("--pos", required=True, help="x,y,z")
+    w1 = ssp.add_parser("canvas"); w1.add_argument("species")
+    w1.add_argument("--width", type=float); w1.add_argument("--height", type=float); w1.add_argument("--floor-y", type=float)
+    w1 = ssp.add_parser("param-add"); w1.add_argument("species"); w1.add_argument("name")
+    w1.add_argument("--joints", required=True, help="逗号分隔关节"); w1.add_argument("--anchor"); w1.add_argument("--label")
+    w1 = ssp.add_parser("wizard-commit"); w1.add_argument("species")
+    w1 = ssp.add_parser("wizard-discard"); w1.add_argument("species")
 
     # action
     ap = sub.add_parser("action", help="动作管理")

@@ -80,6 +80,62 @@ export const api = {
   /** 保存物种默认参数 */
   saveSpeciesDefault: (id, data) => raw(`/api/species/${encodeURIComponent(id)}/default`, json(data)),
 
+  // -- 物种分步向导（模板可选择 + custom 从 0 开始） --
+
+  /** 形态模板列表（含 custom 从 0 开始） @returns {Promise<{templates: object[]}>} */
+  templates: () => raw('/api/templates'),
+
+  /** 向导草稿视图 @returns {Promise<object>} */
+  wizardGet: (id) => raw(`/api/wizard/${encodeURIComponent(id)}`),
+
+  /** 向导初始化（选模板/从 0） */
+  wizardInit: (id, { morph_id = 'custom', title = '', description = '' } = {}) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/init`, json({ morph_id, title, description })),
+
+  /** 新增关节 */
+  wizardJointAdd: (id, { name, parent = null, pos = null, sym = null } = {}) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/joint/add`, json({ name, parent, pos, sym })),
+
+  /** 删除关节 */
+  wizardJointRm: (id, name) => raw(`/api/wizard/${encodeURIComponent(id)}/joint/rm`, json({ name })),
+
+  /** 重命名关节 */
+  wizardJointRename: (id, old, name) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/joint/rename`, json({ old, new: name })),
+
+  /** 修改父级 */
+  wizardJointParent: (id, name, parent) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/joint/parent`, json({ name, parent })),
+
+  /** 一键镜像对称肢 */
+  wizardMirror: (id, source, to_prefix = null) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/limb/mirror`, json({ source, to_prefix })),
+
+  /** 新增链 */
+  wizardChainAdd: (id, name, joints) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/chain/add`, json({ name, joints })),
+
+  /** 删除链 */
+  wizardChainRm: (id, name) => raw(`/api/wizard/${encodeURIComponent(id)}/chain/rm`, json({ name })),
+
+  /** 设关节默认姿态 */
+  wizardPoseSet: (id, name, pos) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/pose/set`, json({ name, pos })),
+
+  /** 画布/地面 */
+  wizardCanvas: (id, { width = null, height = null, floor_y = null } = {}) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/canvas`, json({ width, height, floor_y })),
+
+  /** 新增体型参数链 */
+  wizardParamAdd: (id, name, joints, { anchor = null, label = null } = {}) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/param/add`, json({ name, joints, anchor, label })),
+
+  /** 完成向导（落盘 skeleton/default/preset_schema） */
+  wizardCommit: (id) => raw(`/api/wizard/${encodeURIComponent(id)}/commit`, json({})),
+
+  /** 放弃草稿 */
+  wizardDiscard: (id) => raw(`/api/wizard/${encodeURIComponent(id)}/discard`, json({})),
+
   // -- 3D 预览（3D 坐标 + 投影；基于物种默认参数） --
 
   /** 3D 骨架：任意角度(yaw/pitch) + 距离(透视) 渲染 PNG（species_id 路径） */

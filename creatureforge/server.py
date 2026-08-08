@@ -83,6 +83,10 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             return self._skin3d_get()
         if p.startswith("/api/skins"):
             return self._skins_get()
+        if p.startswith("/api/templates"):
+            return self._templates_get()
+        if p.startswith("/api/wizard/"):
+            return self._wizard_get()
         if p.startswith("/api/skeleton3d/"):
             return self._skeleton3d_get()
         if p.startswith("/api/"):
@@ -97,6 +101,8 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             return self._presets_post()
         if p.startswith("/api/skins"):
             return self._skins_post()
+        if p.startswith("/api/wizard/"):
+            return self._wizard_post()
         self.send_error(404)
 
     def do_PUT(self) -> None:
@@ -556,6 +562,73 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         except KeyError:
             return self._json({"ok": False, "error": f"skin not found: {parts[0]}"}, 404)
         return self._json({"ok": True, "deleted": parts[0]})
+
+    # -- 物种分步向导（模板可选择 + custom 从 0 开始） -------------------
+
+    def _templates_get(self) -> None:
+        """GET /api/templates — 形态模板列表（数据驱动，含 custom 从 0 开始）。"""
+        return self._json({"templates": self.api.templates_list()})
+
+    def _wizard_get(self) -> None:
+        """GET /api/wizard/<species_id> — 向导草稿视图。"""
+        from urllib.parse import urlparse
+        parts = _path_parts(urlparse(self.path).path, "/api/wizard")
+        if len(parts) == 1:
+            try:
+                return self._json(self.api.wizard_get(parts[0]))
+            except KeyError as e:
+                return self._json({"ok": False, "error": str(e)}, 404)
+        self.send_error(404)
+
+    def _wizard_post(self) -> None:
+        """POST /api/wizard/<species_id>/<action> — 分步操作（init/joint/limb/chain/pose/canvas/param/commit/discard）。"""
+        from urllib.parse import urlparse
+        parts = _path_parts(urlparse(self.path).path, "/api/wizard")
+        if len(parts) < 1:
+            return self._json({"ok": False, "error": "missing species"}, 400)
+        sp = parts[0]
+        act = parts[1:]
+        try:
+            body = self._read_body()
+        except Exception as e:
+            return self._json({"ok": False, "error": str(e)}, 400)
+        try:
+            if act == ["init"]:
+                return self._json(self.api.wizard_init(
+                    sp, morph_id=body.get("morph_id", "custom"),
+                    title=body.get("title", ""), description=body.get("description", "")))
+            if act == ["joint", "add"]:
+                return self._json(self.api.wizard_add_joint(
+                    sp, body.get("name", ""), parent=body.get("parent"),
+                    pos=body.get("pos"), sym=body.get("sym")))
+            if act == ["joint", "rm"]:
+                return self._json(self.api.wizard_remove_joint(sp, body.get("name", "")))
+            if act == ["joint", "rename"]:
+                return self._json(self.api.wizard_rename_joint(sp, body.get("old", ""), body.get("new", "")))
+            if act == ["joint", "parent"]:
+                return self._json(self.api.wizard_set_parent(sp, body.get("name", ""), body.get("parent")))
+            if act == ["limb", "mirror"]:
+                return self._json(self.api.wizard_mirror_limb(sp, body.get("source", ""), to_prefix=body.get("to_prefix")))
+            if act == ["chain", "add"]:
+                return self._json(self.api.wizard_add_chain(sp, body.get("name", ""), body.get("joints", []) or []))
+            if act == ["chain", "rm"]:
+                return self._json(self.api.wizard_remove_chain(sp, body.get("name", "")))
+            if act == ["pose", "set"]:
+                return self._json(self.api.wizard_set_pose(sp, body.get("name", ""), body.get("pos", []) or []))
+            if act == ["canvas"]:
+                return self._json(self.api.wizard_set_canvas(
+                    sp, width=body.get("width"), height=body.get("height"), floor_y=body.get("floor_y")))
+            if act == ["param", "add"]:
+                return self._json(self.api.wizard_add_param_chain(
+                    sp, body.get("name", ""), body.get("joints", []) or [],
+                    anchor=body.get("anchor"), label=body.get("label")))
+            if act == ["commit"]:
+                return self._json({"ok": True, "created": self.api.wizard_commit(sp)})
+            if act == ["discard"]:
+                return self._json({"ok": True, "discarded": self.api.wizard_discard(sp)})
+        except (ValueError, KeyError, FileExistsError) as e:
+            return self._json({"ok": False, "error": str(e)}, 400)
+        return self._json({"ok": False, "error": f"unknown wizard action: {'/'.join(act)}"}, 404)
 
     def _preset3d_get(self) -> None:
         """GET /api/preset3d/<id> 或 /api/preset3d/live — 预设渲染（骨架/动作）。

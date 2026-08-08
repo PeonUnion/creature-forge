@@ -23,6 +23,7 @@ from .models import (Motion, MotionListItem, Preset, PresetSummary, Skin, SkinSu
 from .presets import PresetService
 from .skins import SkinService
 from .species import SpeciesService
+from .wizard import SpeciesWizard, TemplatesService
 
 
 def image_to_data_url(img) -> str:
@@ -38,6 +39,9 @@ class ApiService:
         self.species = SpeciesService(species_root)
         self.presets = PresetService(presets_root, self.species)
         self.skins = SkinService(skins_root or (presets_root.parent / "skins"), self.species, self.presets)
+        # 物种分步向导（模板系统 + 骨架结构操作 + 草稿）
+        self.templates = TemplatesService(species_root.parent)
+        self.wizard = SpeciesWizard(species_root, self.templates)
 
     # ------------------------------------------------------------------
     # 物种
@@ -146,6 +150,62 @@ class ApiService:
 
     def skin_part_upload_texture(self, skin_id: str, part_id: str, field: str, filename: str, data: bytes) -> str:
         return self.skins.part_upload_texture(skin_id, part_id, field, filename, data)
+
+    # ------------------------------------------------------------------
+    # 物种分步向导（模板可选择 + custom 从 0 开始；CLI/HTTP 共用）
+    # ------------------------------------------------------------------
+
+    def templates_list(self) -> list[dict]:
+        return self.templates.list()
+
+    def template_get(self, morph_id: str) -> dict:
+        return self.templates.get(morph_id)
+
+    def wizard_get(self, species_id: str) -> dict:
+        return self.wizard.get(species_id)
+
+    def wizard_init(self, species_id: str, *, morph_id: str = "custom",
+                    title: str = "", description: str = "") -> dict:
+        return self.wizard.init(species_id, morph_id=morph_id, title=title, description=description)
+
+    def wizard_add_joint(self, species_id: str, name: str, *, parent: str | None = None,
+                         pos: list[float] | None = None, sym: str | None = None) -> dict:
+        return self.wizard.add_joint(species_id, name, parent=parent, pos=pos, sym=sym)
+
+    def wizard_remove_joint(self, species_id: str, name: str) -> dict:
+        return self.wizard.remove_joint(species_id, name)
+
+    def wizard_rename_joint(self, species_id: str, old: str, new: str) -> dict:
+        return self.wizard.rename_joint(species_id, old, new)
+
+    def wizard_set_parent(self, species_id: str, name: str, parent: str | None) -> dict:
+        return self.wizard.set_parent(species_id, name, parent)
+
+    def wizard_mirror_limb(self, species_id: str, source: str, *, to_prefix: str | None = None) -> dict:
+        return self.wizard.mirror_limb(species_id, source, to_prefix=to_prefix)
+
+    def wizard_add_chain(self, species_id: str, name: str, joints: list[str]) -> dict:
+        return self.wizard.add_chain(species_id, name, joints)
+
+    def wizard_remove_chain(self, species_id: str, name: str) -> dict:
+        return self.wizard.remove_chain(species_id, name)
+
+    def wizard_set_pose(self, species_id: str, name: str, pos: list[float]) -> dict:
+        return self.wizard.set_pose(species_id, name, pos)
+
+    def wizard_set_canvas(self, species_id: str, *, width: float | None = None,
+                          height: float | None = None, floor_y: float | None = None) -> dict:
+        return self.wizard.set_canvas(species_id, width=width, height=height, floor_y=floor_y)
+
+    def wizard_add_param_chain(self, species_id: str, name: str, joints: list[str], *,
+                               anchor: str | None = None, label: str | None = None) -> dict:
+        return self.wizard.add_param_chain(species_id, name, joints, anchor=anchor, label=label)
+
+    def wizard_commit(self, species_id: str) -> str:
+        return self.wizard.commit(species_id)
+
+    def wizard_discard(self, species_id: str) -> str:
+        return self.wizard.discard(species_id)
 
     def _load_part_mesh(self, skin: dict, part: dict) -> dict | None:
         """加载部件网格（内嵌 mesh 或外部 mesh_file 解析）。"""

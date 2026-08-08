@@ -36,7 +36,8 @@ creatureforge/
   skins/                      ← 皮肤（基于预设的实例：基底材质/参数 + 部件集合，可多实例）
     <skin_id>.json            ← {preset, materials, params, parts}（schema 由预设物种 skin_params 派生）
     assets/<skin_id>/<part>/  ← 部件资产（画师上传的网格 .glb/.obj/.json + 贴图图片）
-  web/                        ← Vue 3 前端（物种 / 预设 / 皮肤 独立入口）
+  templates/                  ← 形态模板（分步向导起步：humanoid/custom…，数据驱动可扩展，不预设人形）
+  web/                        ← Vue 3 前端（物种 / 预设 / 皮肤 独立入口 + 物种分步向导）
 scripts/
   mocap/                      ← CMU 动捕工具链（bvh_parser / rebuild_skeleton_cmu / ...）
   verify_motions3d.py         ← 3D 动作验证（8 项检查，数据驱动）
@@ -56,6 +57,9 @@ prototype/                    ← Godot 4.7 demo（保留）
 | `GET /api/skins` | 皮肤列表 |
 | `GET /api/skins/new?preset=` | 新建空白皮肤表单（基于预设，含 schema） |
 | `GET/POST/PUT/DELETE /api/skins...` | 皮肤 CRUD + 部件 CRUD（`<id>/parts...`）+ 部件上传（`<id>/parts/<p>/mesh|texture`） |
+| `GET /api/templates` | 形态模板列表（可选起步，含 custom 从 0 开始） |
+| `GET /api/wizard/<id>` | 物种向导草稿视图 |
+| `POST /api/wizard/<id>/<action>` | 分步操作：`init / joint/add|rm|rename|parent / limb/mirror / chain/add|rm / pose/set / canvas / param/add / commit / discard` |
 | `GET /api/skin3d/<action>` | 蒙皮数据（网格 + 帧 + trs + 权重 + 绑定姿态 + 部件） |
 | `GET /api/skin3d/export/<action>?preset=&skin_id=` | 导出 .glb（基底 + 部件 + 动作动画） |
 | `GET /api/motions3d` | 跨物种动作列表 |
@@ -73,6 +77,16 @@ prototype/                    ← Godot 4.7 demo（保留）
 
 ```bash
 .venv/bin/python -m creatureforge.cli species list
+.venv/bin/python -m creatureforge.cli species templates          # 形态模板（含从 0 开始）
+# 分步向导（Web SpeciesView「新建（向导）」等价；模板可选 / custom 从 0 开始）
+.venv/bin/python -m creatureforge.cli species wizard dragon       # 交互式分步
+.venv/bin/python -m creatureforge.cli species wizard-init dragon --template custom --title "深渊幼龙"
+.venv/bin/python -m creatureforge.cli species joint-add dragon body --pos 480,300,0
+.venv/bin/python -m creatureforge.cli species joint-add dragon head --parent neck --pos 480,110,0
+.venv/bin/python -m creatureforge.cli species limb-mirror dragon wing_l        # 一键镜像对称肢
+.venv/bin/python -m creatureforge.cli species chain-add dragon spine --joints head,neck,chest,body
+.venv/bin/python -m creatureforge.cli species param-add dragon head_scale --joints head --label 头大小
+.venv/bin/python -m creatureforge.cli species wizard-commit dragon
 .venv/bin/python -m creatureforge.cli species schema human
 .venv/bin/python -m creatureforge.cli preset new human
 .venv/bin/python -m creatureforge.cli preset create --json '{"preset_id":"m","species":"human","title":"M","body":{"head_scale":1.2}}'
@@ -115,7 +129,7 @@ python creatureforge/server.py --port 8765
 - **骨骼与 walk 按真实 CMU 动捕重建**（subject16, `16_15.bvh`）：骨长比例精确一致、全关节旋转照搬
 - `skeleton3d.py`：FK（solve_fk3d）、3D 两骨 IK（pole 定弯曲）、渲染、自动适配
 - `motion.py`：信号 DSL（table / param / phase / ...）
-- 前端：物种（骨骼/动作管理）、预设（调体型/动作幅度）与皮肤（材质 + 皮肤参数 + 蒙皮预览）**独立入口**；3D 相机（轨道 + 面板 + 拖拽）；动作预览（播放 + 导出 GIF）
+- 前端：物种（**分步向导新建**：模板可选/从 0 开始 + 骨架可视化编辑；骨骼/动作管理）、预设（调体型/动作幅度）与皮肤（材质 + 皮肤参数 + 蒙皮预览）**独立入口**；3D 相机（轨道 + 面板 + 拖拽）；动作预览（播放 + 导出 GIF）
 
 ## 架构约束（强制 — 禁止硬编码，数据驱动）
 

@@ -15,6 +15,7 @@
 - **皮肤部件系统（游戏皮肤式）**：皮肤 = 基底 + 部件集合；`skinparts.py`（GLB/glTF/OBJ/JSON 网格解析，PBR 材质 + 内嵌贴图提取，Y-up→Y-down 翻转）；部件上传（`/api/skins/<id>/parts/<p>/mesh|texture`）+ 附着骨架（bone 装饰件：选绑定骨骼 + position/rotation/scale）；`export_glb` 部件作为骨骼子节点（动画跟随）；SkinsView「🧩 部件」tab（上传网格/贴图、选骨骼、调变换、预览）；资产存 `data/skins/assets/<id>/<part>/`。
 - **预设蒙皮闭环**：PresetsView「🧍 蒙皮」tab — 选皮肤+动作 → 蒙皮预览 → 导出 GLB（`/api/skin3d/export`，预设体型/动作 + 皮肤材质/体态/部件）。
 - **导航切换修复**：PresetsView beforeUnmount 引用未定义 `playTimer` 中断路由更新 → 删除残留代码，导航切换正常。
+- **物种分步向导（阶段 A）**：`wizard.py`（模板系统 + 骨架结构操作 + 草稿 + commit 派生 skeleton/default/preset_schema）；`data/templates/`（humanoid + custom 从 0 开始，数据驱动可扩展）；**模板可选择、支持从 0 开始构建任意形态**；CLI `species wizard`（交互式）+ `joint-add/rm/rename/parent`、`limb-mirror`、`chain-add/rm`、`pose-set`、`canvas`、`param-add`、`wizard-commit/discard`；前端 SpeciesView「新建物种（向导）」分步（基本信息→选模板/从 0→骨架→姿态→体型参数，3D 预览实时反馈）；「高级 JSON」保留为专家模式；修复 `species_list` joint_count 对映射 joints 的计数 bug。
 - **前端动作预览**：`MotionPreview.vue` 封装播放 + 导出 GIF（后端 `gif=1`）。
 - **全量测试**：E2E 11 用例全通过（物种/预设 CRUD、渲染、GIF、相机、多动作预览+过渡段）；CLI 流程化测试 5 用例（`scripts/test_cli.py`，物种/动作/预设/渲染/错误处理，数据隔离 `test-data-cli/`）。
 - **跨平台发布**：pyinstaller 构建嵌入 web 的 `creature-forge-server`/`creature-forge-cli` 二进制；GitHub Actions（`.github/workflows/release.yml`）矩阵产出 Linux/Windows/macOS，`v*` tag 触发（含 `-rc/-beta/-alpha` 预览版）；Release Notes 由 git 历史自动生成（`scripts/gen_changelog.py`，Conventional Commits 分组），无需维护 CHANGELOG。
@@ -24,7 +25,8 @@
 | 路径 | 说明 |
 |---|---|
 | `creatureforge/api.py / interfaces.py / cli.py / server.py` | 统一 Api（CLI+HTTP 共享）+ 薄路由 + CLI |
-| `creatureforge/species.py / presets.py / skins.py / skinparts.py / skeleton3d.py / motion.py` | 物种 / 预设 / 皮肤 / 部件解析 / 3D 引擎（FK/IK/LBS 蒙皮）/ DSL |
+| `creatureforge/species.py / presets.py / skins.py / skinparts.py / wizard.py / skeleton3d.py / motion.py` | 物种 / 预设 / 皮肤 / 部件解析 / 分步向导（模板+骨架操作）/ 3D 引擎（FK/IK/LBS 蒙皮）/ DSL |
+| `data/templates/` | 形态模板（humanoid / custom 从 0 开始；数据驱动，可扩展任意幻想生物） |
 | `data/species/human/` | 骨骼 + default（CMU 体型）+ actions3d/（walk/run/jump/crawl/idle 真实动捕）+ skin/（mesh + weights + skin_params） |
 | `data/presets/` | 预设（物种实例：body + actions；运行时用户数据） |
 | `data/skins/` | 皮肤（预设实例：materials + params + parts）+ `assets/<id>/<part>/`（部件网格/贴图） |
@@ -39,11 +41,11 @@
 
 ## 三、下一步（待办）
 
-1. **[P0] 皮肤部件 skinned 蒙皮件**：部件 kind=skinned（带权重 LBS 贴合变形，如紧身衣/头发），并入蒙皮导出。
-2. **[P1] 皮肤 CLI/E2E 用例**：`scripts/test_cli.py` 加 `skin` 流程化用例；E2E 覆盖 SkinsView 部件 tab。
-3. **[P2] 部件贴图应用闭环**：albedo/normal/metallicRoughness 贴图在预览 + GLB 导出完整应用（含 GLB 内嵌贴图提取）。
-4. **[P2] Godot demo 接入 3D 动作**：确认 `prototype/` 消费 `dist/<id>/` 制品的流程（`scripts/build_demo.sh`）。
-5. **[P2] Web 前端**：预设实时预览打磨、多动作切换、物种 default 编辑 UI。
+1. **[P0] 动作向导（阶段 B）**：`action wizard` — 关键帧姿势 → 插值生成 fk3d 旋转表 + 幅度参数 + 时序/循环；Web + CLI。
+2. **[P1] 幻想生物模板集**：quadruped / dragon / serpent / multi_pod / floating（数据驱动，扩展 `data/templates/`）。
+3. **[P1] 骨架可视化增强**：向导第 3 步关节拖拽摆姿态（当前坐标表单），第 4 步直接拖拽。
+4. **[P1] 皮肤 CLI/E2E 用例**：`scripts/test_cli.py` 加 `skin`/`wizard` 流程化用例；E2E 覆盖向导。
+5. **[P2] 皮肤部件 skinned 蒙皮件**（带权重 LBS 贴合变形）；Godot demo 接入；Web 前端预设实时预览打磨。
 
 ## 四、关键命令
 

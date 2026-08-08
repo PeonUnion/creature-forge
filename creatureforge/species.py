@@ -26,6 +26,16 @@ from .models import (
 )
 
 
+def _joint_count(joints: dict) -> int:
+    """关节总数：兼容分组格式（{组: [关节名]}，human）与映射格式（{关节: 名称}，向导产物）。"""
+    if not joints:
+        return 0
+    first = next(iter(joints.values()))
+    if isinstance(first, list):
+        return len({j for v in joints.values() if isinstance(v, list) for j in v})
+    return len(joints)
+
+
 class SpeciesService:
     """物种模块：管理 3D 骨骼拓扑、预设 schema 与 3D 动作。"""
 
@@ -160,7 +170,7 @@ class SpeciesService:
                 "id": sp_id,
                 "title": d.get("title", sp_id),
                 "description": d.get("description", ""),
-                "joint_count": sum(len(v) for k, v in d.get("joints", {}).items() if k != "aliases"),
+                "joint_count": _joint_count(d.get("joints", {})),
                 "bone_count": total_bones,
                 "chain_count": len(d.get("chains", {})),
                 "param_chain_count": len(d.get("param_chains", {})),

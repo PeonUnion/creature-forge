@@ -5,7 +5,10 @@
         <h2>🦴 物种管理</h2>
         <p class="page-desc">物种 = 骨骼拓扑 + 默认参数 + 动作。默认参数（default.json）是物种添加/修改动作的基础。</p>
       </div>
-      <el-button type="primary" @click="startCreate" icon="Plus">新建物种</el-button>
+      <div class="header-actions">
+        <el-button type="primary" @click="startWizard" icon="MagicStick">新建物种（向导）</el-button>
+        <el-button @click="startCreate">高级 JSON</el-button>
+      </div>
     </div>
 
     <div class="layout">
@@ -40,7 +43,11 @@
         </div>
       </aside>
 
-      <!-- 右侧内容 -->
+      <!-- 右侧内容：分步向导（模板可选择 + 从 0 开始） -->
+      <section class="content" v-if="wizardMode">
+        <SpeciesWizard @done="onWizardDone" @cancel="wizardMode = false" />
+      </section>
+
       <section class="content" v-if="editMode">
         <!-- 编辑物种 -->
         <div class="content-header">
@@ -249,6 +256,7 @@ import { api } from '../api.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CameraControls from '../components/CameraControls.vue'
 import Skeleton3DViewer from '../components/Skeleton3DViewer.vue'
+import SpeciesWizard from './SpeciesWizard.vue'
 
 const loading = ref(true)
 const speciesList = ref([])
@@ -259,6 +267,7 @@ const activeTab = ref('skeleton')
 const editMode = ref(null)
 const isCreating = ref(false)
 const saving = ref(false)
+const wizardMode = ref(false) // 分步向导（模板可选择 + 从 0 开始）
 const previews = ref(null)
 const skeletonData = ref(null)   // WebGL 骨架数据 {joints, bones, center, head_radius}
 const skeletonViewer = ref(null) // Skeleton3DViewer 实例（setView 控制相机）
@@ -427,7 +436,19 @@ async function exportMotionGif() {
 
 // -- 物种 CRUD --
 
+function startWizard() {
+  editMode.value = null
+  selectedSpecies.value = null
+  wizardMode.value = true
+}
+
+async function onWizardDone() {
+  wizardMode.value = false
+  await loadSpecies()
+}
+
 function startCreate() {
+  wizardMode.value = false
   isCreating.value = true
   editMode.value = 'create'
   editForm.value = { species_id:'', title:'', description:'', jointsStr:'{}', bonesStr:'[]', chainsStr:'{}', paramChainsStr:'{}', followChainsStr:'{}', followConfigStr:'{}', defaultStr:'{}' }
