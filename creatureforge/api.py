@@ -193,6 +193,14 @@ class ApiService:
     def wizard_set_pose(self, species_id: str, name: str, pos: list[float]) -> dict:
         return self.wizard.set_pose(species_id, name, pos)
 
+    def wizard_rotate(self, species_id: str, *, axis: str = "z", angle: float = 90,
+                      joint: str | None = None) -> dict:
+        return self.wizard.rotate(species_id, axis=axis, angle=angle, joint=joint)
+
+    def wizard_translate(self, species_id: str, *, dx: float = 0, dy: float = 0,
+                         dz: float = 0, joint: str | None = None) -> dict:
+        return self.wizard.translate(species_id, dx=dx, dy=dy, dz=dz, joint=joint)
+
     def wizard_set_canvas(self, species_id: str, *, width: float | None = None,
                           height: float | None = None, floor_y: float | None = None) -> dict:
         return self.wizard.set_canvas(species_id, width=width, height=height, floor_y=floor_y)

@@ -68,6 +68,27 @@
             </div>
             <div class="wiz-controls">
               <div class="sec">
+                <div class="sec-t">快速操作（选关节 = 旋转/平移该关节及其子树；空 = 整体）</div>
+                <el-select v-model="rotJoint" size="small" placeholder="作用于（空 = 整体）" clearable filterable style="width: 100%">
+                  <el-option v-for="n in jointNames" :key="n" :label="n" :value="n" />
+                </el-select>
+                <div class="row3 wrap">
+                  <el-button size="small" @click="rotate('x', -90)">X-90</el-button>
+                  <el-button size="small" @click="rotate('x', 90)">X+90</el-button>
+                  <el-button size="small" @click="rotate('y', -90)">Y-90</el-button>
+                  <el-button size="small" @click="rotate('y', 90)">Y+90</el-button>
+                  <el-button size="small" @click="rotate('z', -90)">Z-90</el-button>
+                  <el-button size="small" @click="rotate('z', 90)">Z+90</el-button>
+                </div>
+                <div class="row3 wrap">
+                  <el-button size="small" type="primary" plain @click="horizontalize">水平化</el-button>
+                  <el-button size="small" @click="translate(0, -20, 0)">上移</el-button>
+                  <el-button size="small" @click="translate(0, 20, 0)">下移</el-button>
+                  <el-button size="small" @click="translate(-20, 0, 0)">左移</el-button>
+                  <el-button size="small" @click="translate(20, 0, 0)">右移</el-button>
+                </div>
+              </div>
+              <div class="sec">
                 <div class="sec-t">关节坐标</div>
                 <el-select v-model="poseJoint" size="small" placeholder="选关节" filterable style="width: 100%">
                   <el-option v-for="n in jointNames" :key="n" :label="n" :value="n" />
@@ -168,6 +189,7 @@ const chainName = ref('')
 const chainJoints = ref('')
 const poseJoint = ref('')
 const poseStr = ref('')
+const rotJoint = ref('')
 const posePlaceholder = computed(() =>
   poseJoint.value && pos3d.value[poseJoint.value]
     ? `当前 ${pos3d.value[poseJoint.value].join(',')}（输入 x,y,z）`
@@ -246,6 +268,25 @@ async function setPose() {
   try { await api.wizardPoseSet(props.speciesId, poseJoint.value, pos); await refresh() }
   catch (e) { ElMessage.error(e.message) }
 }
+async function rotate(axis, angle) {
+  try {
+    await api.wizardRotate(props.speciesId, { axis, angle, joint: rotJoint.value || null })
+    await refresh()
+  } catch (e) { ElMessage.error(e.message) }
+}
+async function horizontalize() {
+  try {
+    // 竖直姿态 → 水平：绕 Z 轴 90°（把 Y 方向主轴转成 X 方向），整体
+    await api.wizardRotate(props.speciesId, { axis: 'z', angle: 90, joint: null })
+    await refresh()
+  } catch (e) { ElMessage.error(e.message) }
+}
+async function translate(dx, dy, dz) {
+  try {
+    await api.wizardTranslate(props.speciesId, { dx, dy, dz, joint: rotJoint.value || null })
+    await refresh()
+  } catch (e) { ElMessage.error(e.message) }
+}
 async function setCanvas() {
   try { await api.wizardCanvas(props.speciesId, { ...canvas.value }); ElMessage.success('画布已保存') }
   catch (e) { ElMessage.error(e.message) }
@@ -292,6 +333,7 @@ async function save() {
 .mono { font-family: monospace; }
 .parent { color: #909399; font-size: .72rem; flex: 1; }
 .row3 { display: flex; gap: 6px; }
+.row3.wrap { flex-wrap: wrap; }
 .preview-empty { border: 1px dashed #d9d9d9; border-radius: 8px; min-height: 300px; display: flex; align-items: center; justify-content: center; color: #c0c4cc; }
 .json-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .json-box { border: 1px solid #ebeef5; border-radius: 8px; }

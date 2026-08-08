@@ -621,6 +621,13 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
                 return self._json(self.api.wizard_remove_chain(sp, body.get("name", "")))
             if act == ["pose", "set"]:
                 return self._json(self.api.wizard_set_pose(sp, body.get("name", ""), body.get("pos", []) or []))
+            if act == ["rotate"]:
+                return self._json(self.api.wizard_rotate(
+                    sp, axis=body.get("axis", "z"), angle=float(body.get("angle", 90)), joint=body.get("joint")))
+            if act == ["translate"]:
+                return self._json(self.api.wizard_translate(
+                    sp, dx=float(body.get("dx", 0)), dy=float(body.get("dy", 0)),
+                    dz=float(body.get("dz", 0)), joint=body.get("joint")))
             if act == ["canvas"]:
                 return self._json(self.api.wizard_set_canvas(
                     sp, width=body.get("width"), height=body.get("height"), floor_y=body.get("floor_y")))

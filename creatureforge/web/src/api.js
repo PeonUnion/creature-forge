@@ -122,6 +122,14 @@ export const api = {
   wizardPoseSet: (id, name, pos) =>
     raw(`/api/wizard/${encodeURIComponent(id)}/pose/set`, json({ name, pos })),
 
+  /** 姿态快速操作：旋转（axis x/y/z，joint 空=整体） */
+  wizardRotate: (id, { axis = 'z', angle = 90, joint = null } = {}) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/rotate`, json({ axis, angle, joint })),
+
+  /** 姿态快速操作：平移（joint 空=整体） */
+  wizardTranslate: (id, { dx = 0, dy = 0, dz = 0, joint = null } = {}) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/translate`, json({ dx, dy, dz, joint })),
+
   /** 画布/地面 */
   wizardCanvas: (id, { width = null, height = null, floor_y = null } = {}) =>
     raw(`/api/wizard/${encodeURIComponent(id)}/canvas`, json({ width, height, floor_y })),

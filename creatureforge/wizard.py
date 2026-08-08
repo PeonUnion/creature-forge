@@ -492,6 +492,76 @@ class SpeciesWizard:
         self._save_draft(self._draft_path(species_id), draft)
         return self._view(draft)
 
+    # -- 姿态快速操作（旋转 / 平移，避免笔直朝天等姿势问题） --
+
+    @staticmethod
+    def _subtree(draft: dict, name: str) -> list[str]:
+        """关节及其所有后代（BFS，自顶向下）。"""
+        nodes = draft["nodes"]
+        out: list[str] = []
+        queue = [name]
+        while queue:
+            cur = queue.pop(0)
+            out.append(cur)
+            for n, nd in nodes.items():
+                if nd.get("parent") == cur and n not in out:
+                    queue.append(n)
+        return out
+
+    def rotate(self, species_id: str, *, axis: str = "z", angle: float = 90,
+               joint: str | None = None) -> dict:
+        """第 4 步快速操作：绕中心旋转姿态。
+
+        joint 给定时旋转该关节及其子树（绕该关节当前位置）；
+        否则整体旋转（绕画布中心/质心）。axis ∈ x/y/z，angle 度。
+        """
+        import math
+        draft = self._load_draft(species_id)
+        pos3d = draft.setdefault("default", {}).setdefault("positions_3d", {})
+        if not pos3d:
+            raise ValueError("暂无姿态坐标")
+        axis = (axis or "z").lower()
+        rad = math.radians(float(angle))
+        c, s = math.cos(rad), math.sin(rad)
+        if joint:
+            if joint not in draft["nodes"]:
+                raise KeyError(f"joint not found: {joint}")
+            names = self._subtree(draft, joint)
+            cx, cy, cz = pos3d.get(joint, [0.0, 0.0, 0.0])
+        else:
+            names = list(pos3d)
+            cx = sum(v[0] for v in pos3d.values()) / len(pos3d)
+            cy = sum(v[1] for v in pos3d.values()) / len(pos3d)
+            cz = sum(v[2] for v in pos3d.values()) / len(pos3d)
+        for n in names:
+            x, y, z = pos3d[n]
+            dx, dy, dz = x - cx, y - cy, z - cz
+            if axis == "z":
+                nx, ny, nz = dx * c - dy * s + cx, dx * s + dy * c + cy, z
+            elif axis == "y":
+                nx, ny, nz = dx * c + dz * s + cx, y, -dx * s + dz * c + cz
+            elif axis == "x":
+                nx, ny, nz = x, dy * c - dz * s + cy, dy * s + dz * c + cz
+            else:
+                raise ValueError(f"axis must be x/y/z: {axis}")
+            pos3d[n] = [round(nx, 2), round(ny, 2), round(nz, 2)]
+        self._save_draft(self._draft_path(species_id), draft)
+        return self._view(draft)
+
+    def translate(self, species_id: str, *, dx: float = 0, dy: float = 0,
+                  dz: float = 0, joint: str | None = None) -> dict:
+        """第 4 步快速操作：平移姿态（joint 给定时平移该关节及其子树，否则整体）。"""
+        draft = self._load_draft(species_id)
+        pos3d = draft.setdefault("default", {}).setdefault("positions_3d", {})
+        names = self._subtree(draft, joint) if joint else list(pos3d)
+        for n in names:
+            if n not in pos3d:
+                continue
+            x, y, z = pos3d[n]
+            pos3d[n] = [round(x + float(dx), 2), round(y + float(dy), 2), round(z + float(dz), 2)]
+        self._save_draft(self._draft_path(species_id), draft)
+        return self._view(draft)
+
     def set_canvas(self, species_id: str, *, width: float | None = None,
                    height: float | None = None, floor_y: float | None = None) -> dict:
         """第 4 步：画布/地面设置。"""

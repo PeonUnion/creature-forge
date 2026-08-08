@@ -16,9 +16,6 @@
         <router-link to="/skins">
           <span class="nav-icon">🧍</span> 皮肤
         </router-link>
-        <router-link to="/skin">
-          <span class="nav-icon">🧍</span> 蒙皮
-        </router-link>
       </nav>
       <div class="nav-right">
         <span class="status-dot"></span>
