@@ -37,7 +37,7 @@
     <!-- Step 3 骨架结构 -->
     <div v-if="step === 2" class="wiz-panel">
       <h4>3. 骨架结构（可视化 + 表单，无需 JSON）</h4>
-      <p class="hint">第一个关节即「根」；可「一键镜像」对称肢（如 wing_l → wing_r）。</p>
+      <p class="hint">关节按父子关系树形展示（根在最前，缩进 = 子级）。每行可直接下拉改父级、改名；可「一键镜像」对称肢（如 wing_l → wing_r）。</p>
       <div class="wiz-layout">
         <div class="wiz-preview">
           <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
@@ -55,13 +55,21 @@
             <el-button size="small" type="primary" @click="addJoint" icon="Plus">加关节</el-button>
           </div>
           <div class="sec">
-            <div class="sec-t">关节列表（{{ jointNames.length }}）</div>
+            <div class="sec-t">关节树（{{ jointNames.length }}，缩进 = 子级，父级可下拉重接）</div>
             <div class="joint-list">
-              <div v-for="n in jointNames" :key="n" class="joint-row">
-                <span class="mono">{{ n }}</span>
-                <span class="parent">{{ nodes[n]?.parent ? '← ' + nodes[n].parent : '根' }}</span>
-                <el-button size="small" text type="primary" @click="mirrorJoint(n)">镜像</el-button>
-                <el-button size="small" text type="danger" @click="rmJoint(n)">删</el-button>
+              <div v-for="jt in jointTree" :key="jt.name" class="joint-row"
+                :style="{ paddingLeft: (jt.depth ? 10 + jt.depth * 16 : 8) + 'px' }">
+                <span class="tree-mark" :class="{ root: !jt.parent }">{{ jt.parent ? '└' : '●' }}</span>
+                <span class="mono">{{ jt.name }}</span>
+                <el-select class="parent-sel" :model-value="jt.parent" size="small" placeholder="根"
+                  clearable filterable @change="(v) => changeParent(jt.name, v)">
+                  <el-option v-for="n in jointNames" :key="n" :label="n" :value="n" :disabled="n === jt.name" />
+                </el-select>
+                <span class="row-actions">
+                  <el-button size="small" text type="primary" @click="renameJoint(jt.name)">改名</el-button>
+                  <el-button size="small" text type="primary" @click="mirrorJoint(jt.name)">镜像</el-button>
+                  <el-button size="small" text type="danger" @click="rmJoint(jt.name)">删</el-button>
+                </span>
               </div>
             </div>
           </div>
@@ -165,6 +173,31 @@ const paramChains = computed(() => wiz.value?.param_chains || {})
 const pos3d = computed(() => wiz.value?.positions_3d || {})
 const jointNames = computed(() => Object.keys(nodes.value))
 
+// 关节树：按父级组织（根在最前），DFS 层级排序；孤儿/断链子树的根兜底
+const jointTree = computed(() => {
+  const childrenOf = {}
+  const names = Object.keys(nodes.value)
+  for (const name of names) {
+    const nd = nodes.value[name]
+    const p = (nd && nd.parent) || ''
+    ;(childrenOf[p] ||= []).push(name)
+  }
+  for (const arr of Object.values(childrenOf)) arr.sort()
+  const out = []
+  const visited = new Set()
+  const walk = (p, depth) => {
+    for (const name of childrenOf[p] || []) {
+      if (visited.has(name)) continue
+      visited.add(name)
+      out.push({ name, depth, parent: p || null })
+      walk(name, depth + 1)
+    }
+  }
+  walk('', 0)
+  for (const name of names) { if (!visited.has(name)) walk(name, 0) }
+  return out
+})
+
 // 骨架预览：positions_3d + parent → Skeleton3DViewer 数据（Y-down，组件内部翻转）
 const preview = computed(() => {
   const joints = {}
@@ -260,6 +293,26 @@ async function mirrorJoint(name) {
     await refresh()
   } catch (e) { ElMessage.error(e.message) }
 }
+async function changeParent(name, parent) {
+  try {
+    await api.wizardJointParent(form.value.species_id.trim(), name, parent || null)
+    await refresh()
+  } catch (e) { ElMessage.error(e.message); await refresh() }
+}
+async function renameJoint(oldName) {
+  let value = null
+  try {
+    const r = await ElMessageBox.prompt(`重命名「${oldName}」为：`, '改名', {
+      inputValue: oldName,
+      inputValidator: (v) => (v && v.trim() && v.trim() !== oldName) || '请输入不同的新名称',
+    })
+    value = r.value.trim()
+  } catch (e) { return }  // 取消
+  try {
+    await api.wizardJointRename(form.value.species_id.trim(), oldName, value)
+    await refresh()
+  } catch (e) { ElMessage.error(e.message) }
+}
 
 async function addChain() {
   const name = chainName.value.trim()
@@ -339,8 +392,12 @@ async function cancel() {
 .sec { border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 12px; background: #fafbfc; display: flex; flex-direction: column; gap: 8px; }
 .sec-t { font-size: .78rem; font-weight: 600; color: #606266; }
 .joint-list { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-.joint-row { display: flex; align-items: center; gap: 8px; font-size: .8rem; padding: 2px 4px; border-radius: 4px; }
+.joint-row { display: flex; align-items: center; gap: 6px; font-size: .8rem; padding: 2px 4px; border-radius: 4px; }
 .joint-row:hover { background: #f0f2f5; }
+.tree-mark { color: #c0c4cc; font-size: .72rem; width: 10px; flex: 0 0 auto; }
+.tree-mark.root { color: #67c23a; }
+.parent-sel { width: 96px; flex: 0 0 auto; }
+.row-actions { margin-left: auto; display: flex; gap: 2px; white-space: nowrap; }
 .mono { font-family: monospace; }
 .parent { color: #909399; font-size: .72rem; flex: 1; }
 .row3 { display: flex; gap: 6px; }
