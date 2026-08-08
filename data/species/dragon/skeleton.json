@@ -1,0 +1,290 @@
+{
+  "species_id": "dragon",
+  "schema": "creatureforge_species_v1",
+  "title": "东方龙",
+  "description": "从0分步构建的东方龙：蛇形长躯干 + 分叉鹿角 + 龙须 + 四爪 + 长尾（CLI 向导）",
+  "joints": {
+    "body_mid": "body_mid",
+    "body_front": "body_front",
+    "body_rear": "body_rear",
+    "neck": "neck",
+    "head": "head",
+    "horn_l": "horn_l",
+    "horn_l_branch": "horn_l_branch",
+    "horn_r": "horn_r",
+    "horn_l_branch_mirror": "horn_l_branch_mirror",
+    "whisker_l": "whisker_l",
+    "whisker_l_tip": "whisker_l_tip",
+    "whisker_r": "whisker_r",
+    "whisker_l_tip_mirror": "whisker_l_tip_mirror",
+    "front_leg_l": "front_leg_l",
+    "front_paw_l": "front_paw_l",
+    "front_leg_r": "front_leg_r",
+    "front_paw_r": "front_paw_r",
+    "back_leg_l": "back_leg_l",
+    "back_paw_l": "back_paw_l",
+    "back_leg_r": "back_leg_r",
+    "back_paw_r": "back_paw_r",
+    "tail1": "tail1",
+    "tail2": "tail2",
+    "tail3": "tail3",
+    "tail_tip": "tail_tip"
+  },
+  "chains": {
+    "spine": [
+      "head",
+      "neck",
+      "body_front",
+      "body_mid",
+      "body_rear",
+      "tail1",
+      "tail2",
+      "tail3",
+      "tail_tip"
+    ],
+    "tail": [
+      "tail_tip",
+      "tail3",
+      "tail2",
+      "tail1",
+      "body_rear"
+    ],
+    "foreleg_left": [
+      "front_leg_l",
+      "front_paw_l"
+    ],
+    "hindleg_left": [
+      "back_leg_l",
+      "back_paw_l"
+    ]
+  },
+  "param_chains": {
+    "body_length": {
+      "param": "body_length",
+      "joints": [
+        "neck",
+        "body_front",
+        "body_mid",
+        "body_rear",
+        "tail1",
+        "tail2",
+        "tail3"
+      ],
+      "anchor": "body_mid",
+      "label": "躯干长"
+    },
+    "horn_scale": {
+      "param": "horn_scale",
+      "joints": [
+        "horn_l",
+        "horn_r"
+      ],
+      "anchor": "head",
+      "label": "角大小"
+    },
+    "whisker_len": {
+      "param": "whisker_len",
+      "joints": [
+        "whisker_l",
+        "whisker_r"
+      ],
+      "anchor": "head",
+      "label": "须长"
+    }
+  },
+  "bones_3d": [
+    [
+      "body_mid",
+      "body_front"
+    ],
+    [
+      "body_mid",
+      "body_rear"
+    ],
+    [
+      "body_front",
+      "neck"
+    ],
+    [
+      "neck",
+      "head"
+    ],
+    [
+      "head",
+      "horn_l"
+    ],
+    [
+      "horn_l",
+      "horn_l_branch"
+    ],
+    [
+      "head",
+      "horn_r"
+    ],
+    [
+      "horn_r",
+      "horn_l_branch_mirror"
+    ],
+    [
+      "head",
+      "whisker_l"
+    ],
+    [
+      "whisker_l",
+      "whisker_l_tip"
+    ],
+    [
+      "head",
+      "whisker_r"
+    ],
+    [
+      "whisker_r",
+      "whisker_l_tip_mirror"
+    ],
+    [
+      "body_front",
+      "front_leg_l"
+    ],
+    [
+      "front_leg_l",
+      "front_paw_l"
+    ],
+    [
+      "body_front",
+      "front_leg_r"
+    ],
+    [
+      "front_leg_r",
+      "front_paw_r"
+    ],
+    [
+      "body_rear",
+      "back_leg_l"
+    ],
+    [
+      "back_leg_l",
+      "back_paw_l"
+    ],
+    [
+      "body_rear",
+      "back_leg_r"
+    ],
+    [
+      "back_leg_r",
+      "back_paw_r"
+    ],
+    [
+      "body_rear",
+      "tail1"
+    ],
+    [
+      "tail1",
+      "tail2"
+    ],
+    [
+      "tail2",
+      "tail3"
+    ],
+    [
+      "tail3",
+      "tail_tip"
+    ]
+  ],
+  "fk_tree": {
+    "body_mid": null,
+    "body_front": "body_mid",
+    "body_rear": "body_mid",
+    "neck": "body_front",
+    "head": "neck",
+    "horn_l": "head",
+    "horn_l_branch": "horn_l",
+    "horn_r": "head",
+    "horn_l_branch_mirror": "horn_r",
+    "whisker_l": "head",
+    "whisker_l_tip": "whisker_l",
+    "whisker_r": "head",
+    "whisker_l_tip_mirror": "whisker_r",
+    "front_leg_l": "body_front",
+    "front_paw_l": "front_leg_l",
+    "front_leg_r": "body_front",
+    "front_paw_r": "front_leg_r",
+    "back_leg_l": "body_rear",
+    "back_paw_l": "back_leg_l",
+    "back_leg_r": "body_rear",
+    "back_paw_r": "back_leg_r",
+    "tail1": "body_rear",
+    "tail2": "tail1",
+    "tail3": "tail2",
+    "tail_tip": "tail3"
+  },
+  "constraints": {
+    "schema": "creatureforge_constraints_v1",
+    "description": "向导自动派生：对称对 + 刚性链（可手动扩展）",
+    "symmetry3d": {
+      "pairs": [
+        [
+          "horn_l",
+          "horn_r"
+        ],
+        [
+          "horn_l_branch",
+          "horn_l_branch_mirror"
+        ],
+        [
+          "whisker_l",
+          "whisker_r"
+        ],
+        [
+          "whisker_l_tip",
+          "whisker_l_tip_mirror"
+        ],
+        [
+          "front_leg_l",
+          "front_leg_r"
+        ],
+        [
+          "front_paw_l",
+          "front_paw_r"
+        ],
+        [
+          "back_leg_l",
+          "back_leg_r"
+        ],
+        [
+          "back_paw_l",
+          "back_paw_r"
+        ]
+      ]
+    },
+    "rigid_chains": {
+      "chains": [
+        [
+          "head",
+          "neck",
+          "body_front",
+          "body_mid",
+          "body_rear",
+          "tail1",
+          "tail2",
+          "tail3",
+          "tail_tip"
+        ],
+        [
+          "tail_tip",
+          "tail3",
+          "tail2",
+          "tail1",
+          "body_rear"
+        ],
+        [
+          "front_leg_l",
+          "front_paw_l"
+        ],
+        [
+          "back_leg_l",
+          "back_paw_l"
+        ]
+      ]
+    }
+  }
+}

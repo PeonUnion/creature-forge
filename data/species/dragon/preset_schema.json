@@ -1,0 +1,75 @@
+{
+  "schema": "creatureforge_preset_schema_v1",
+  "species": "dragon",
+  "description": "预设 schema（随物种骨架自动派生）：预设只需提供 body 体型参数 + actions 动作参数值。",
+  "required_fields": [
+    "preset_id",
+    "schema",
+    "title",
+    "description",
+    "species",
+    "body",
+    "actions"
+  ],
+  "joints_3d": [
+    "body_mid",
+    "body_front",
+    "body_rear",
+    "neck",
+    "head",
+    "horn_l",
+    "horn_l_branch",
+    "horn_r",
+    "horn_l_branch_mirror",
+    "whisker_l",
+    "whisker_l_tip",
+    "whisker_r",
+    "whisker_l_tip_mirror",
+    "front_leg_l",
+    "front_paw_l",
+    "front_leg_r",
+    "front_paw_r",
+    "back_leg_l",
+    "back_paw_l",
+    "back_leg_r",
+    "back_paw_r",
+    "tail1",
+    "tail2",
+    "tail3",
+    "tail_tip"
+  ],
+  "params": {
+    "body_length": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "body_length"
+    },
+    "horn_scale": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "horn_scale"
+    },
+    "whisker_len": {
+      "default": 1.0,
+      "min": 0.6,
+      "max": 1.6,
+      "step": 0.05,
+      "label": "whisker_len"
+    }
+  },
+  "canvas": {
+    "width": 960,
+    "height": 600,
+    "floor_y": 470
+  },
+  "head_radius": 24,
+  "body_default": {
+    "body_length": 1.0,
+    "horn_scale": 1.0,
+    "whisker_len": 1.0
+  }
+}

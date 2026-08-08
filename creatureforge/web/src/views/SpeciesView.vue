@@ -165,9 +165,11 @@
             <div class="section" v-if="speciesDetail?.joints">
               <div class="section-head"><h4>关节组</h4></div>
               <div class="tag-cloud">
-                <el-tag v-for="(names, group) in speciesDetail.joints" :key="group" v-if="group!=='aliases' && Array.isArray(names)" size="small" effect="plain" class="joint-tag">
-                  <span class="tag-group">{{ group }}</span>: {{ names.join(', ') }}
-                </el-tag>
+                <template v-for="(names, group) in speciesDetail.joints" :key="group">
+                  <el-tag v-if="group !== 'aliases' && Array.isArray(names)" size="small" effect="plain" class="joint-tag">
+                    <span class="tag-group">{{ group }}</span>: {{ names.join(', ') }}
+                  </el-tag>
+                </template>
               </div>
             </div>
             <div class="section" v-if="speciesDetail?.chains">
