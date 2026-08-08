@@ -32,7 +32,7 @@ const emit = defineEmits(['ready', 'view'])
 
 const hasFrames = computed(() => props.frames && props.frames.length > 0)
 const mountEl = ref(null)
-let renderer, scene, camera, controls, skinMesh = null
+let renderer, scene, camera, controls, skinMesh = null, grid = null
 let posAttr = null, fitTarget = new THREE.Vector3(), fitDist = 300
 let rafId = null, resizeObs = null, animTimer = null
 const playing = ref(false)
@@ -144,6 +144,21 @@ function fitCamera() {
   const radius = Math.max(...pts.map(p => Math.hypot(p[0] - fitTarget.x, p[1] - fitTarget.y, p[2] - fitTarget.z)), 10)
   fitDist = radius / Math.tan(THREE.MathUtils.degToRad(45) / 2) / 0.76
   controls.target.copy(fitTarget)
+
+  // 地面网格（脚部平面，Y-up = -脚部最低点；覆盖模型半径，帮助定位地面/脚着地）
+  if (grid) scene.remove(grid)
+  let maxFootY = -Infinity
+  for (const f of props.frames) {
+    for (let k = 1; k < f.length; k += 3) if (f[k] > maxFootY) maxFootY = f[k]
+  }
+  const groundY = maxFootY === -Infinity ? 0 : -maxFootY
+  const size = radius * 2.8
+  grid = new THREE.GridHelper(size, 12, 0x4b5e7a, 0x3a4a5f)
+  grid.position.y = groundY
+  grid.position.x = fitTarget.x
+  grid.position.z = fitTarget.z
+  scene.add(grid)
+
   setView(30, 12, 1)
 }
 
