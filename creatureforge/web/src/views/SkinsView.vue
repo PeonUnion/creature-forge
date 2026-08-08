@@ -3,7 +3,7 @@
     <div class="page-header">
       <div>
         <h2>🧍 皮肤管理</h2>
-        <p class="page-desc">皮肤 = 基于物种的外观实例：肤色 / 体脂 / 肌肉等皮肤参数 + 材质参数（albedo / 粗糙度 / 金属度）。参数面板由物种皮肤定义派生，网格/权重为物种基底（skin/），皮肤只存外观覆盖。</p>
+        <p class="page-desc">皮肤 = 基于预设的外观实例：肤色 / 体脂 / 肌肉等皮肤参数 + 材质参数（albedo / 粗糙度 / 金属度）。参数面板由预设物种的皮肤定义派生，网格/权重为物种基底（skin/），皮肤只存外观覆盖。</p>
       </div>
       <el-button type="primary" icon="Plus" @click="startCreate">新建皮肤</el-button>
     </div>
@@ -24,6 +24,7 @@
               <span class="item-id">{{ s.skin_id }}</span>
             </div>
             <div class="item-meta">
+              <span class="meta-chip">🎨 {{ s.preset }}</span>
               <span class="meta-chip">🦴 {{ s.species }}</span>
               <span class="meta-chip">{{ s.description }}</span>
             </div>
@@ -37,16 +38,16 @@
 
       <!-- 右侧 -->
       <section class="content">
-        <!-- 新建：先选物种（皮肤 schema 来源） -->
+        <!-- 新建：先选预设（皮肤基于预设，schema 由预设物种派生） -->
         <div v-if="creating" class="panel">
-          <h4 class="panel-title">新建皮肤 — 选择物种</h4>
-          <p class="hint">物种提供皮肤参数 schema（肤色/体脂/肌肉）与材质基底（skin/materials）。</p>
+          <h4 class="panel-title">新建皮肤 — 选择预设</h4>
+          <p class="hint">皮肤基于预设：预设提供物种（网格/权重基底 + 皮肤参数 schema）与动作参数；在此之上调整皮肤外观。</p>
           <div class="create-row">
-            <el-select v-model="newSpeciesId" placeholder="选择物种" style="width: 300px" filterable>
-              <el-option v-for="s in speciesList" :key="s.id"
-                         :label="`${s.title} (${s.id})`" :value="s.id" />
+            <el-select v-model="newPresetId" placeholder="选择预设" style="width: 300px" filterable>
+              <el-option v-for="p in presetList" :key="p.preset_id"
+                         :label="`${p.title} (${p.preset_id}) — ${p.species}`" :value="p.preset_id" />
             </el-select>
-            <el-button type="primary" :disabled="!newSpeciesId" @click="initNew" icon="Right">初始化皮肤</el-button>
+            <el-button type="primary" :disabled="!newPresetId" @click="initNew" icon="Right">初始化皮肤</el-button>
             <el-button @click="creating = false">取消</el-button>
           </div>
         </div>
@@ -65,7 +66,8 @@
             <el-form-item label="皮肤 ID"><el-input v-model="current.skin_id" :disabled="!isNew" placeholder="如 sk_warrior" /></el-form-item>
             <el-form-item label="名称"><el-input v-model="current.title" placeholder="如 战士皮肤" /></el-form-item>
             <el-form-item label="描述"><el-input v-model="current.description" /></el-form-item>
-            <el-form-item label="物种（schema 来源）"><el-tag effect="plain">🦴 {{ current.species }}</el-tag></el-form-item>
+            <el-form-item label="基于预设（schema 来源）"><el-tag effect="plain">🎨 {{ current.preset }}</el-tag></el-form-item>
+            <el-form-item label="物种（网格/权重基底）"><el-tag effect="plain">🦴 {{ current.species }}</el-tag></el-form-item>
           </el-form>
 
           <el-tabs v-model="tab">
@@ -118,7 +120,7 @@
               </div>
               <SkinnedViewer v-if="previewData" ref="previewViewer"
                 :mesh="previewData.mesh" :frames="previewData.frames" :fps="previewData.fps"
-                :center="previewData.center" :material="current.materials" :body-scale="bodyScale"
+                :center="previewData.center" :material="current.materials"
                 @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
               <div v-else class="preview-empty"><p>{{ rendering ? '渲染中…' : '选择动作加载蒙皮预览（应用当前皮肤参数）' }}</p></div>
             </el-tab-pane>
@@ -128,7 +130,7 @@
         <div v-else class="panel empty-state">
           <div class="empty-icon">🧍</div>
           <h3>选择或创建皮肤</h3>
-          <p>皮肤是基于物种的外观实例：肤色 / 体脂 / 肌肉 + 材质，可多个并存。</p>
+          <p>皮肤是基于预设的外观实例：肤色 / 体脂 / 肌肉 + 材质，可多个并存。</p>
           <el-button type="primary" @click="startCreate">新建皮肤</el-button>
         </div>
       </section>
@@ -150,11 +152,11 @@ const predefColors = ['#c9a58c', '#8a5a3a', '#5d8a3a', '#6b8a5a', '#d8b8a0', '#b
 const loading = ref(true)
 const saving = ref(false)
 const skinList = ref([])
-const speciesList = ref([])
+const presetList = ref([])
 const current = ref(null)
 const isNew = ref(false)
 const creating = ref(false)
-const newSpeciesId = ref('')
+const newPresetId = ref('')
 const tab = ref('params')
 const cam = ref({ yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 })
 const previewAction = ref('')
@@ -171,17 +173,22 @@ const paramItems = computed(() => {
     step: spec.step || 0.01, def: spec.default ?? 0, desc: spec.desc || '',
   }))
 })
-// 胖瘦因子：体脂/肌肉 → 网格 x/z 缩放（增宽/收窄，保持身高）
+// 胖瘦因子：由皮肤参数（fat/muscle）+ 物种 body_scale 公式派生（数据驱动，网格 x/z 缩放由后端应用进 frames）
 const bodyScale = computed(() => {
+  const bs = schema.value.body_scale
+  if (!bs) return null
   const p = current.value?.params || {}
-  const fat = p.fat ?? 0.3
-  const muscle = p.muscle ?? 0.5
-  return Math.max(0.6, Math.min(1.6, 1 + (fat - 0.3) * 0.35 + (muscle - 0.5) * 0.12))
+  let s = bs.base ?? 1
+  for (const [k, cfg] of Object.entries(bs.params || {})) {
+    const v = p[k] ?? cfg.offset ?? 0
+    s += (cfg.coef ?? 0) * (v - (cfg.offset ?? 0))
+  }
+  return Math.max(bs.min ?? 0.6, Math.min(bs.max ?? 1.6, s))
 })
 const round = (v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v)
 
 onMounted(async () => {
-  await Promise.all([loadSkins(), loadSpecies()])
+  await Promise.all([loadSkins(), loadPresets()])
   loading.value = false
 })
 
@@ -189,9 +196,9 @@ async function loadSkins() {
   try { const r = await api.skins(); skinList.value = r.skins || [] }
   catch (e) { ElMessage.error('加载皮肤失败: ' + e.message) }
 }
-async function loadSpecies() {
-  try { const r = await api.species(); speciesList.value = r.species || [] }
-  catch (e) { ElMessage.error('加载物种失败: ' + e.message) }
+async function loadPresets() {
+  try { const r = await api.presets(); presetList.value = r.presets || [] }
+  catch (e) { ElMessage.error('加载预设失败: ' + e.message) }
 }
 
 async function openSkin(s) {
@@ -205,12 +212,12 @@ async function openSkin(s) {
   } catch (e) { ElMessage.error(e.message) }
 }
 
-function startCreate() { creating.value = true; newSpeciesId.value = '' }
+function startCreate() { creating.value = true; newPresetId.value = '' }
 
 async function initNew() {
-  if (!newSpeciesId.value) return
+  if (!newPresetId.value) return
   try {
-    current.value = await api.skinNew(newSpeciesId.value)
+    current.value = await api.skinNew(newPresetId.value)
     isNew.value = true
     creating.value = false
     tab.value = 'params'
@@ -267,7 +274,8 @@ async function renderLive() {
   rendering.value = true
   try {
     if (previewAction.value) {
-      const r = await api.skin3dData(previewAction.value, `species=${encodeURIComponent(c.species)}`)
+      const r = await api.skin3dData(previewAction.value,
+        `preset=${encodeURIComponent(c.preset)}&skin_id=${encodeURIComponent(c.skin_id)}`)
       if (r.ok && r.frames) previewData.value = r
       else previewData.value = null
     } else {

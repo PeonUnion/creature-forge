@@ -137,9 +137,9 @@ def cmd_skin(args) -> None:
     svc = api()
     if args.sub == "list":
         for s in svc.skins_list():
-            print(f"  {s['skin_id']:20s} {s.get('title',''):24s} [{s['species']}]", file=sys.stdout)
+            print(f"  {s['skin_id']:20s} {s.get('title',''):24s} [预设:{s.get('preset','')} 物种:{s['species']}]", file=sys.stdout)
     elif args.sub == "new":
-        _json(svc.skin_new(args.species))
+        _json(svc.skin_new(args.preset))
     elif args.sub == "show":
         _json(svc.skin_get(args.id))
     elif args.sub == "create":
@@ -188,7 +188,9 @@ def cmd_render(args) -> None:
             _save_data_url(out, result.get("data_url", ""))
     elif args.mode == "skin":
         # 蒙皮 glTF 导出：骨骼 + 蒙皮网格 + 真实动捕动作动画 → .glb（Godot/Unity/Blender）
-        result = svc.export_glb(args.id, species=args.species, out=args.out)
+        # 预设（--preset）+ 皮肤（--skin）可选：应用体型/动作参数 + 皮肤材质/体态
+        result = svc.export_glb(args.id, species=args.species, preset=args.preset,
+                                skin_id=args.skin, out=args.out)
         _json(result)
 
 
@@ -248,7 +250,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp_ = sub.add_parser("skin", help="皮肤管理（独立入口，基于物种，可多实例）")
     ssp_ = sp_.add_subparsers(dest="sub", required=True)
     ssp_.add_parser("list")
-    s1_ = ssp_.add_parser("new"); s1_.add_argument("species", help="新建空白皮肤表单（含 schema）")
+    s1_ = ssp_.add_parser("new"); s1_.add_argument("preset", help="基于的预设 id（皮肤基于预设）")
     s1_ = ssp_.add_parser("show"); s1_.add_argument("id")
     s1_ = ssp_.add_parser("create"); s1_.add_argument("--json"); s1_.add_argument("--file")
     s1_ = ssp_.add_parser("update"); s1_.add_argument("id"); s1_.add_argument("--json"); s1_.add_argument("--file")
@@ -267,7 +269,9 @@ def build_parser() -> argparse.ArgumentParser:
     r1.add_argument("--body", help="体型参数 a=1,b=2"); r1.add_argument("--actions", help="动作参数 walk3d=intensity=1.2")
     r1.add_argument("--action", help="动作 id"); _add_render_opts(r1)
     r1 = rsub.add_parser("skin"); r1.add_argument("id", help="action id")
-    r1.add_argument("--species", help="限定物种"); _add_render_opts(r1)
+    r1.add_argument("--species", help="限定物种")
+    r1.add_argument("--preset", help="预设 id（提供物种+体型+动作参数）")
+    r1.add_argument("--skin", dest="skin", help="皮肤 id（应用材质 + 体态）"); _add_render_opts(r1)
 
     # self-update
     up = sub.add_parser("upgrade", help="检查并更新到最新版（GitHub Releases）")

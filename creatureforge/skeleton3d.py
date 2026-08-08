@@ -533,8 +533,11 @@ def _fk_world_pose(skel3d: dict, motion3d: dict, index: int, params: dict | None
 
 
 def skinned_vertices(skel3d: dict, motion3d: dict, index: int, skin: dict,
-                     params: dict | None = None) -> list[float]:
+                     params: dict | None = None, body_scale: float | None = None) -> list[float]:
     """LBS 顶点蒙皮：skin 网格每顶点按骨骼世界变换混合（绑 ≤4 骨，权重外挂）。
+
+    body_scale: 可选，网格体态缩放因子（绑定姿态顶点 x/z 缩放，Y-down 下 x/z 为左右/前后
+    水平面），由皮肤参数（fat/muscle）+ body_scale 公式派生。
 
     返回 flat 顶点列表（[x,y,z, x,y,z, ...]，Y-down 项目坐标）。
     """
@@ -547,8 +550,12 @@ def skinned_vertices(skel3d: dict, motion3d: dict, index: int, skin: dict,
     bind = skel3d["joints"]
     nv = mesh["vertex_count"]
     out_flat = [0.0] * (nv * 3)
+    sx = body_scale if body_scale else 1.0
     for vi in range(nv):
         vx, vy, vz = verts[3 * vi], verts[3 * vi + 1], verts[3 * vi + 2]
+        if body_scale:
+            vx *= sx
+            vz *= sx
         ax = ay = az = 0.0
         for bi, wt in zip(per[vi]["indices"], per[vi]["weights"]):
             jn = bn[bi]

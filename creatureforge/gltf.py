@@ -34,6 +34,19 @@ def _flip_y(v3):
     return [v3[0], -v3[1], v3[2]]
 
 
+def _hex_to_rgb(hex_color: str) -> list[float]:
+    """>#rrggbb → [r,g,b]（0-1）。支持简写 #rgb，非法值回退默认肤色。"""
+    s = (hex_color or "").lstrip("#")
+    if len(s) == 3:
+        s = "".join(c * 2 for c in s)
+    try:
+        if len(s) == 6:
+            return [int(s[0:2], 16) / 255.0, int(s[2:4], 16) / 255.0, int(s[4:6], 16) / 255.0]
+    except ValueError:
+        pass
+    return [0.788, 0.647, 0.549]  # 默认肤色 #c9a58c
+
+
 def _quat_from_euler_xyz(rx, ry, rz):
     """欧拉角(Rz·Ry·Rx 顺序, Three.js Euler XYZ) → 四元数 [x,y,z,w]。"""
     c1, s1 = math.cos(rx / 2), math.sin(rx / 2)
@@ -86,12 +99,15 @@ class _GLB:
         return len(self.json["accessors"]) - 1
 
 
-def export_glb(skel3d: dict, skin: dict, motion3d: dict, params: dict | None = None) -> bytes:
+def export_glb(skel3d: dict, skin: dict, motion3d: dict, params: dict | None = None,
+               body_scale: float | None = None, materials: dict | None = None) -> bytes:
     """导出 .glb（骨骼 + 蒙皮网格 + 动作动画）。
 
     skel3d: build_skeleton_3d 输出（joints/fk_tree/fk_local/bones）
     skin:  {"mesh": mesh.json, "weights": weights.json}
     motion3d: 动作 JSON（fk3d 旋转表 + root3d）
+    body_scale: 可选，绑定姿态顶点 x/z 缩放（皮肤体态，如 fat/muscle → 胖瘦）
+    materials: 可选，材质覆盖 {albedo, roughness, metallic}（皮肤材质）
     """
     from .skeleton3d import per_frame_trs
 
@@ -107,6 +123,7 @@ def export_glb(skel3d: dict, skin: dict, motion3d: dict, params: dict | None = N
     idx_of = {n: i for i, n in enumerate(bn)}
     nv = mesh["vertex_count"]
     n_bones = len(bn)
+    sx = body_scale if body_scale else 1.0
 
     g = _GLB()
     # ---- 节点：骨骼（Y-up，根在原点，子=绝对坐标差）+ mesh node ----
@@ -136,6 +153,9 @@ def export_glb(skel3d: dict, skin: dict, motion3d: dict, params: dict | None = N
     pos_flat = []
     for i in range(nv):
         x, y, z = mesh["vertices"][3 * i], mesh["vertices"][3 * i + 1], mesh["vertices"][3 * i + 2]
+        if body_scale:
+            x *= sx
+            z *= sx
         pos_flat += [x, -y, z]
         for a in range(3):
             v = [x, -y, z][a]
@@ -165,10 +185,15 @@ def export_glb(skel3d: dict, skin: dict, motion3d: dict, params: dict | None = N
             "JOINTS_0": acc_joints, "WEIGHTS_0": acc_wght},
             "indices": acc_idx, "material": 0}],
         "name": "creatureforge_skin"})
+    # 材质：皮肤覆盖（albedo / roughness / metallic）优先，否则默认肤色
+    mat = materials or {}
+    bc = _hex_to_rgb(str(mat.get("albedo", "#c9a58c")))
+    rough = float(mat.get("roughness", 0.6))
+    metal = float(mat.get("metallic", 0.0))
     g.json["materials"].append({
         "pbrMetallicRoughness": {
-            "baseColorFactor": [0.788, 0.647, 0.549, 1.0],
-            "metallicFactor": 0.0, "roughnessFactor": 0.6},
+            "baseColorFactor": [bc[0], bc[1], bc[2], 1.0],
+            "metallicFactor": metal, "roughnessFactor": rough},
         "doubleSided": True, "name": "skin"})
     # ---- skin：joints + inverseBindMatrices（绑定姿态相对根）----
     ibm = []

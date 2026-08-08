@@ -173,12 +173,13 @@ class PresetSummary(TypedDict):
 
 
 class Skin(TypedDict):
-    """皮肤（基于物种的外观实例：皮肤参数 + 材质参数）。
+    """皮肤（基于预设的外观实例：皮肤参数 + 材质参数）。
 
     skin_id: 唯一标识，如 "sk_warrior"
     schema: 格式版本 "creatureforge_skin_v1"
     title / description: 显示信息
-    species: 引用的物种 ID（schema 由物种皮肤定义派生）
+    preset: 引用的预设 ID（schema 由预设的物种皮肤定义派生）
+    species: 预设的物种 ID（冗余，网格/权重基底，schema 来源）
     materials: 材质参数（albedo 颜色 / roughness 粗糙度 / metallic 金属度）
     params: 皮肤参数当前值（如 skin_tone 肤色 / fat 体脂 / muscle 肌肉）
     """
@@ -187,6 +188,7 @@ class Skin(TypedDict):
     skin_id: str
     title: str
     description: str
+    preset: str
     species: str
     materials: Dict[str, object]
     params: Dict[str, float]
@@ -198,6 +200,7 @@ class SkinSummary(TypedDict):
     skin_id: str
     title: str
     description: str
+    preset: str
     species: str
 
 

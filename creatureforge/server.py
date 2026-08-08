@@ -208,22 +208,48 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             return self._json({"ok": False, "error": str(e)}, 500)
 
     def _skin3d_get(self) -> None:
-        """GET /api/skin3d/<action>?species=human&body=&params= — 蒙皮网格 + 每帧变形顶点（WebGL 预览）。"""
+        """GET /api/skin3d/<action>?preset=&skin_id=&species=&body=&params= — 蒙皮网格 + 每帧变形顶点。
+        GET /api/skin3d/export/<action>?preset=&skin_id= — 导出 .glb（骨骼 + 蒙皮 + 动作动画）。
+        """
         from urllib.parse import parse_qs, urlparse
         path_only = urlparse(self.path).path
         parts = _path_parts(path_only, "/api/skin3d")
+        qs = parse_qs(urlparse(self.path).query)
+        # 导出 .glb：预设（物种+体型+动作）+ 皮肤（材质+体态）→ 蒙皮 → 最终导出素材
+        if parts and parts[0] == "export" and len(parts) == 2:
+            return self._skin3d_export(parts[1], qs)
         if len(parts) != 1:
             self.send_error(404)
             return
-        qs = parse_qs(urlparse(self.path).query)
         species_q = qs.get("species", [None])[0]
+        preset_q = qs.get("preset", [None])[0]
+        skin_q = qs.get("skin_id", [None])[0]
         body = json.loads(qs.get("body", ["{}"])[0])
         params = json.loads(qs.get("params", ["{}"])[0])
         try:
             return self._json(self.api.skin3d_data(
-                parts[0], species=species_q, body=body, params=params))
+                parts[0], species=species_q, preset=preset_q, skin_id=skin_q,
+                body=body, params=params))
         except KeyError as e:
             return self._json({"ok": False, "error": str(e)}, 404)
+        except Exception as e:
+            return self._json({"ok": False, "error": str(e)}, 500)
+
+    def _skin3d_export(self, action_id: str, qs: dict) -> None:
+        """导出 .glb 二进制（预设 + 皮肤 → 蒙皮 → 动画）。"""
+        species_q = qs.get("species", [None])[0]
+        preset_q = qs.get("preset", [None])[0]
+        skin_q = qs.get("skin_id", [None])[0]
+        try:
+            glb = self.api.export_glb(action_id, species=species_q, preset=preset_q, skin_id=skin_q)
+            if isinstance(glb, dict):
+                raise RuntimeError(glb.get("error", "export failed"))
+            self.send_response(200)
+            self.send_header("Content-Type", "model/gltf-binary")
+            self.send_header("Content-Disposition", f'attachment; filename="{action_id}.glb"')
+            self.send_header("Content-Length", str(len(glb)))
+            self.end_headers()
+            self.wfile.write(glb)
         except Exception as e:
             return self._json({"ok": False, "error": str(e)}, 500)
 
@@ -422,7 +448,7 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
     # -- skins API -----------------------------------------------------
 
     def _skins_get(self) -> None:
-        """GET /api/skins — list; /api/skins/new?species= — 新建空白表单; /api/skins/<id> — 详情。"""
+        """GET /api/skins — list; /api/skins/new?preset= — 新建空白表单; /api/skins/<id> — 详情。"""
         from urllib.parse import urlparse
         parts = _path_parts(urlparse(self.path).path, "/api/skins")
         if not parts:
@@ -430,9 +456,11 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
         if parts[0] == "new":
             from urllib.parse import parse_qs, urlparse
             qs = parse_qs(urlparse(self.path).query)
-            sp = qs.get("species", ["human"])[0]
+            pid = qs.get("preset", [""])[0]
+            if not pid:
+                return self._json({"ok": False, "error": "preset required"}, 400)
             try:
-                return self._json(self.api.skin_new(sp))
+                return self._json(self.api.skin_new(pid))
             except Exception as e:
                 return self._json({"ok": False, "error": str(e)}, 400)
         try:

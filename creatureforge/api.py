@@ -37,7 +37,7 @@ class ApiService:
     def __init__(self, species_root: Path, presets_root: Path, skins_root: Path | None = None) -> None:
         self.species = SpeciesService(species_root)
         self.presets = PresetService(presets_root, self.species)
-        self.skins = SkinService(skins_root or (presets_root.parent / "skins"), self.species)
+        self.skins = SkinService(skins_root or (presets_root.parent / "skins"), self.species, self.presets)
 
     # ------------------------------------------------------------------
     # 物种
@@ -118,8 +118,8 @@ class ApiService:
     def skin_get(self, skin_id: str) -> dict:
         return self.skins.get(skin_id)
 
-    def skin_new(self, species_id: str) -> dict:
-        return self.skins.new_schema(species_id)
+    def skin_new(self, preset_id: str) -> dict:
+        return self.skins.new_schema(preset_id)
 
     def skin_create(self, data: Skin) -> str:
         return self.skins.create(data)
@@ -209,28 +209,31 @@ class ApiService:
     # ------------------------------------------------------------------
 
     def skin3d_data(self, action_id: str, *, species: str | None = None,
+                    preset: str | None = None, skin_id: str | None = None,
                     body: dict | None = None, params: dict | None = None) -> dict:
         """返回蒙皮网格 + 动作每帧变形顶点（前端 WebGL 蒙皮预览，不渲染 PNG）。
 
         mesh 为绑定姿态网格（indices/uvs/normals/vertex_count/materials），
         frames 为每帧 flat 顶点列表（[x,y,z,...]，Y-down 项目坐标，由 LBS 计算）；
         boneNames/bindJoints 供前端叠加骨骼显示；数据全部外挂 skin/。
+
+        数据源优先级：preset（预设：物种 + 体型 body + 动作参数）→ species（兼容）。
+        skin_id 可选：应用皮肤材质 + 体态（body_scale 网格 x/z 缩放）。
         """
         from .skeleton3d import build_skeleton_3d, skinned_vertices, per_frame_trs
-        if species:
-            motion = self.species.get_action(species, action_id)
-            species_id = species
-        else:
-            found = self.species.find_action(action_id)
-            if not found:
-                raise KeyError(f"3D action not found: {action_id}")
-            species_id, motion = found
+        species_id, motion, body, params = self._resolve_motion_source(
+            action_id, species=species, preset=preset, body=body, params=params)
         skel3d = build_skeleton_3d(species_id, body=body, species_root=self.species._root)
         skin = self._load_skin(species_id)
+        # 皮肤：材质 + 体态（body_scale 网格 x/z 缩放）
+        materials, body_scale = self._apply_skin(skin, skin_id)
         n = int(motion.get("frame_count", 8))
         p = params or {}
-        frames = [skinned_vertices(skel3d, motion, i, skin, params=p) for i in range(n)]
+        frames = [skinned_vertices(skel3d, motion, i, skin, params=p, body_scale=body_scale)
+                  for i in range(n)]
         mesh = skin["mesh"]
+        if materials:
+            mesh = {**mesh, "materials": materials}
         return {"ok": True,
                 "mesh": {"indices": mesh["indices"], "uvs": mesh["uvs"],
                          "normals": mesh["normals"], "vertex_count": mesh["vertex_count"],
@@ -247,6 +250,43 @@ class ApiService:
                 "fps": int(motion.get("fps", 6)) or 6,
                 "center": list(skel3d.get("center", (480.0, 300.0, 0.0)))}
 
+    def _resolve_motion_source(self, action_id: str, *, species: str | None = None,
+                               preset: str | None = None, body: dict | None = None,
+                               params: dict | None = None) -> tuple[str, dict, dict | None, dict | None]:
+        """解析蒙皮/导出数据源：preset（优先）→ species。返回 (species_id, motion, body, params)。
+
+        preset 提供：物种、体型参数（body）、动作参数（preset.actions[action_id]）。
+        显式传入的 body/params 覆盖 preset 值。
+        """
+        if preset:
+            p = self.presets.get(preset)
+            species_id = (p or {}).get("species", "") or species
+            if not species_id:
+                raise KeyError(f"preset has no species: {preset}")
+            motion = self.species.get_action(species_id, action_id)
+            preset_body = (p or {}).get("body") or {}
+            preset_params = ((p or {}).get("actions") or {}).get(action_id) or {}
+            body = body if body is not None else (preset_body or None)
+            params = params if params is not None else (preset_params or None)
+        elif species:
+            motion = self.species.get_action(species, action_id)
+            species_id = species
+        else:
+            found = self.species.find_action(action_id)
+            if not found:
+                raise KeyError(f"3D action not found: {action_id}")
+            species_id, motion = found
+        return species_id, motion, body, params
+
+    def _apply_skin(self, skin_data: dict, skin_id: str | None) -> tuple[dict | None, float | None]:
+        """应用皮肤到蒙皮数据：返回 (materials, body_scale)。skin_id 为空 → (None, None)。"""
+        if not skin_id:
+            return None, None
+        sk = self.skins.get(skin_id)
+        materials = sk.get("materials") or None
+        bs = self.skins.body_scale(sk.get("params"), (sk.get("schema_info") or {}).get("body_scale"))
+        return materials, bs
+
     def _load_skin(self, species_id: str) -> dict:
         """加载外挂蒙皮数据（skin/mesh.json + skin/weights.json）。"""
         root = self.species._root / species_id / "skin"
@@ -255,25 +295,22 @@ class ApiService:
         return {"mesh": mesh, "weights": weights}
 
     def export_glb(self, action_id: str, *, species: str | None = None,
+                   preset: str | None = None, skin_id: str | None = None,
                    body: dict | None = None, params: dict | None = None,
                    out: str | None = None) -> dict | bytes:
         """导出 .glb（骨骼 + 蒙皮网格 + 真实动捕动作动画），供 Godot/Unity/Blender 导入。
 
+        preset 提供物种 + 体型 + 动作参数；skin_id 可选应用皮肤材质 + 体态。
         out 给出路径时写文件并返回 {ok, glb, bytes}；否则返回 GLB 二进制 bytes。
         """
         from .skeleton3d import build_skeleton_3d
         from .gltf import export_glb as _export_glb
-        if species:
-            motion = self.species.get_action(species, action_id)
-            species_id = species
-        else:
-            found = self.species.find_action(action_id)
-            if not found:
-                raise KeyError(f"3D action not found: {action_id}")
-            species_id, motion = found
+        species_id, motion, body, params = self._resolve_motion_source(
+            action_id, species=species, preset=preset, body=body, params=params)
         skel3d = build_skeleton_3d(species_id, body=body, species_root=self.species._root)
         skin = self._load_skin(species_id)
-        glb = _export_glb(skel3d, skin, motion, params)
+        materials, body_scale = self._apply_skin(skin, skin_id)
+        glb = _export_glb(skel3d, skin, motion, params, body_scale=body_scale, materials=materials)
         if out:
             Path(out).write_bytes(glb)
             return {"ok": True, "glb": str(out), "bytes": len(glb)}

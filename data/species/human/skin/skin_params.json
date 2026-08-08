@@ -31,5 +31,14 @@
     "albedo": "#c9a58c",
     "roughness": 0.6,
     "metallic": 0.0
+  },
+  "body_scale": {
+    "base": 1.0,
+    "min": 0.6,
+    "max": 1.6,
+    "params": {
+      "fat": {"coef": 0.35, "offset": 0.3, "desc": "体脂 → 网格半径外扩"},
+      "muscle": {"coef": 0.12, "offset": 0.5, "desc": "肌肉 → 网格半径略扩"}
+    }
   }
 }

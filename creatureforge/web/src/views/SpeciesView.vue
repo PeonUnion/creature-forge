@@ -121,24 +121,16 @@
             <h4>动作预览</h4>
             <div class="preview-controls">
               <CameraControls v-model="cam" compact />
-              <el-radio-group v-model="previewMode" size="small" @change="onPreviewMode">
-                <el-radio-button value="skeleton">骨架</el-radio-button>
-                <el-radio-button value="skin">蒙皮</el-radio-button>
-              </el-radio-group>
               <el-button size="small" type="primary" @click="renderAction" :loading="motionRenderLoading" icon="Refresh">渲染</el-button>
-              <el-button size="small" :disabled="!(motionData || skinData)" :loading="gifLoading" icon="Download" @click="exportMotionGif">导出 GIF</el-button>
+              <el-button size="small" :disabled="!motionData" :loading="gifLoading" icon="Download" @click="exportMotionGif">导出 GIF</el-button>
             </div>
           </div>
-          <SkinnedViewer v-if="previewMode==='skin' && skinData" ref="skinViewer"
-            :mesh="skinData.mesh" :frames="skinData.frames" :fps="skinData.fps"
-            :center="skinData.center"
-            @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
-          <Skeleton3DViewer v-else-if="motionData" ref="motionViewer"
+          <Skeleton3DViewer v-if="motionData" ref="motionViewer"
             :frames="motionData.frames" :bones="motionData.bones"
             :head-radius="motionData.head_radius" :center="motionData.center"
             :fps="motionData.fps"
             @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
-          <div class="preview-empty" v-else><p>点击「渲染」加载 3D 动作预览（骨架 / 蒙皮；左键拖拽=转动手办 · 右键平移 · 滚轮缩放）</p></div>
+          <div class="preview-empty" v-else><p>点击「渲染」加载 3D 动作预览（骨架；左键拖拽=转动手办 · 右键平移 · 滚轮缩放）</p></div>
         </div>
       </section>
 
@@ -257,7 +249,6 @@ import { api } from '../api.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CameraControls from '../components/CameraControls.vue'
 import Skeleton3DViewer from '../components/Skeleton3DViewer.vue'
-import SkinnedViewer from '../components/SkinnedViewer.vue'
 
 const loading = ref(true)
 const speciesList = ref([])
@@ -278,13 +269,9 @@ const actionJson = ref('')
 const motionData = ref(null)
 const motionViewer = ref(null)  // Skeleton3DViewer 实例（setView 控制相机）
 const gifLoading = ref(false)
-// 蒙皮预览：骨架 / 蒙皮 切换（蒙皮 = LBS 网格跟随真实动捕，数据外挂 skin/）
-const previewMode = ref('skeleton')
-const skinData = ref(null)
-const skinViewer = ref(null)   // SkinnedViewer 实例
 // 上一次预览动作 id（动作切换时请求拼接过渡段：上一动作尾帧 → 本动作首帧）
 let lastMotionId = ''
-function resetMotionData() { motionData.value = null; skinData.value = null }
+function resetMotionData() { motionData.value = null }
 const motionRenderLoading = ref(false)
 const cam = ref({ yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 })
 const camQS = () => `yaw=${cam.value.yaw}&pitch=${cam.value.pitch}&dist=${cam.value.dist}&pan_x=${cam.value.panX}&pan_y=${cam.value.panY}`
@@ -299,9 +286,6 @@ watch(cam, () => {
     }
     if (motionData.value && motionViewer.value) {
       motionViewer.value.setView(cam.value.yaw, cam.value.pitch, cam.value.dist, cam.value.panX, cam.value.panY)
-    }
-    if (skinData.value && skinViewer.value) {
-      skinViewer.value.setView(cam.value.yaw, cam.value.pitch, cam.value.dist, cam.value.panX, cam.value.panY)
     }
   }, 120)
 }, { deep: true })
@@ -410,35 +394,21 @@ async function renderAction() {
   if (!actionEditor.value?.motion_id) { ElMessage.warning('请先填写 motion_id'); return }
   motionRenderLoading.value = true
   try {
-    if (previewMode.value === 'skin') {
-      // 蒙皮：每帧变形顶点（后端 LBS 蒙皮，数据外挂 skin/）
-      const r = await api.skin3dData(actionEditor.value.motion_id, `species=${selectedSpecies.value.id}`)
-      if (r.ok && r.frames) skinData.value = r
-      else { skinData.value = null; ElMessage.error('蒙皮数据获取失败（该物种暂无 skin/ 蒙皮数据）') }
-    } else {
-      // 骨架：每帧关节数据（含切换过渡段）
-      const switching = lastMotionId && lastMotionId !== actionEditor.value.motion_id
-      const trans = switching ? `&transition_from=${encodeURIComponent(lastMotionId)}` : ''
-      const r = await api.motion3dData(actionEditor.value.motion_id, `species=${selectedSpecies.value.id}${trans}`)
-      if (r.ok && r.frames) motionData.value = r
-      else { motionData.value = null; ElMessage.error('动作数据获取失败') }
-      lastMotionId = actionEditor.value.motion_id
-    }
+    // 骨架：每帧关节数据（含切换过渡段）
+    const switching = lastMotionId && lastMotionId !== actionEditor.value.motion_id
+    const trans = switching ? `&transition_from=${encodeURIComponent(lastMotionId)}` : ''
+    const r = await api.motion3dData(actionEditor.value.motion_id, `species=${selectedSpecies.value.id}${trans}`)
+    if (r.ok && r.frames) motionData.value = r
+    else { motionData.value = null; ElMessage.error('动作数据获取失败') }
+    lastMotionId = actionEditor.value.motion_id
   } catch(e) { ElMessage.error(e.message) }
   motionRenderLoading.value = false
 }
 
-// 骨架 / 蒙皮 预览切换
-function onPreviewMode() {
-  motionData.value = null
-  skinData.value = null
-  renderAction()
-}
-
 /** 导出 GIF：基于当前 Three.js 视图逐帧截帧（所见即所得），前端 gifenc 编码 */
 async function exportMotionGif() {
-  const viewer = previewMode.value === 'skin' ? skinViewer.value : motionViewer.value
-  if (!viewer || !(previewMode.value === 'skin' ? skinData.value : motionData.value)) {
+  const viewer = motionViewer.value
+  if (!viewer || !motionData.value) {
     ElMessage.warning('请先渲染动作'); return
   }
   gifLoading.value = true

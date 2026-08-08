@@ -120,6 +120,28 @@
                 @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
               <div v-else class="preview-empty"><p>{{ rendering ? '渲染中…' : '调整参数自动渲染预览' }}</p></div>
             </el-tab-pane>
+
+            <!-- 蒙皮：预设 + 皮肤 → 蒙皮预览 → 最终导出（GLB） -->
+            <el-tab-pane label="🧍 蒙皮" name="skinning">
+              <div class="preview-controls">
+                <CameraControls v-model="cam" />
+                <el-select v-model="previewSkinId" placeholder="选择皮肤" clearable filterable style="width: 210px">
+                  <el-option v-for="s in currentSkins" :key="s.skin_id"
+                             :label="`${s.title||s.skin_id} (${s.skin_id})`" :value="s.skin_id" />
+                </el-select>
+                <el-select v-model="previewAction" placeholder="选择动作" clearable filterable style="width: 150px">
+                  <el-option v-for="(a, aid) in schema.actions" :key="aid" :label="a.title||aid" :value="aid" />
+                </el-select>
+                <el-button size="small" type="primary" :loading="exporting" icon="Download"
+                           :disabled="!previewSkinId || !previewAction" @click="exportGlb">导出 GLB</el-button>
+                <span class="hint">预设（体型+动作）+ 皮肤（材质+体态）→ 蒙皮 → 导出</span>
+              </div>
+              <SkinnedViewer v-if="skinPreviewData" ref="skinViewer"
+                :mesh="skinPreviewData.mesh" :frames="skinPreviewData.frames" :fps="skinPreviewData.fps"
+                :center="skinPreviewData.center"
+                @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
+              <div v-else class="preview-empty"><p>{{ skinRendering ? '渲染中…' : '选择皮肤 + 动作加载蒙皮预览（后端 LBS，应用预设体型/动作 + 皮肤材质/体态）' }}</p></div>
+            </el-tab-pane>
           </el-tabs>
         </div>
 
@@ -140,16 +162,21 @@ import { api } from '../api.js'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import CameraControls from '../components/CameraControls.vue'
 import Skeleton3DViewer from '../components/Skeleton3DViewer.vue'
+import SkinnedViewer from '../components/SkinnedViewer.vue'
 
 const loading = ref(true)
 const saving = ref(false)
 const presetList = ref([])
 const speciesList = ref([])
+const skinList = ref([])        // 全部皮肤（当前预设的皮肤可选）
 const current = ref(null)
 const isNew = ref(false)
 const creating = ref(false)
 const newSpeciesId = ref('')
 const tab = ref('body')
+
+// 当前预设的皮肤（皮肤基于预设：预设物种提供网格/权重 + 皮肤参数 schema）
+const currentSkins = computed(() => skinList.value.filter(s => s.preset === current.value?.preset_id))
 
 // 预览（统一 WebGL 组件：骨架 joints 或动作 frames，均由父组件请求数据传入）
 const cam = ref({ yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 })
@@ -159,6 +186,14 @@ const previewData = ref(null)   // WebGL 数据 {joints|frames, bones, fps, ...}
 const previewViewer = ref(null) // Skeleton3DViewer 实例（setView 控制相机）
 const rendering = ref(false)
 let renderTimer = null
+
+// 蒙皮预览（预设 + 皮肤 → 后端 LBS 蒙皮数据，含皮肤材质 + 体态）
+const previewSkinId = ref('')
+const skinPreviewData = ref(null)
+const skinViewer = ref(null)    // SkinnedViewer 实例
+const skinRendering = ref(false)
+const exporting = ref(false)
+let skinTimer = null
 
 const camQS = () => `yaw=${cam.value.yaw}&pitch=${cam.value.pitch}&dist=${cam.value.dist}&pan_x=${cam.value.panX}&pan_y=${cam.value.panY}`
 
@@ -174,9 +209,14 @@ const bodyParamItems = computed(() => {
 const round = (v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v)
 
 onMounted(async () => {
-  await Promise.all([loadPresets(), loadSpecies()])
+  await Promise.all([loadPresets(), loadSpecies(), loadSkins()])
   loading.value = false
 })
+
+async function loadSkins() {
+  try { const r = await api.skins(); skinList.value = r.skins || [] }
+  catch (e) { /* 皮肤列表加载失败不阻塞 */ }
+}
 
 async function loadPresets() {
   try { const r = await api.presets(); presetList.value = r.presets || [] }
@@ -198,6 +238,9 @@ async function openPreset(p) {
     previewAction.value = ''
     lastPreviewAction.value = ''
     previewData.value = null
+    previewSkinId.value = ''
+    skinPreviewData.value = null
+    await loadSkins()
   } catch (e) { ElMessage.error(e.message) }
 }
 
@@ -261,7 +304,15 @@ watch(cam, () => {
   if (previewData.value && previewViewer.value) {
     previewViewer.value.setView(cam.value.yaw, cam.value.pitch, cam.value.dist, cam.value.panX, cam.value.panY)
   }
+  if (skinPreviewData.value && skinViewer.value) {
+    skinViewer.value.setView(cam.value.yaw, cam.value.pitch, cam.value.dist, cam.value.panX, cam.value.panY)
+  }
 }, { deep: true })
+
+// 蒙皮：皮肤/动作变化 → 重新加载蒙皮数据（预设 + 皮肤）
+watch([previewSkinId, previewAction], () => {
+  if (tab.value === 'skinning') scheduleSkinRender()
+})
 
 function scheduleRender() {
   if (!current.value) return
@@ -295,9 +346,59 @@ async function renderLive() {
   rendering.value = false
 }
 
+// -- 蒙皮预览（预设 + 皮肤 → 后端 LBS 蒙皮，应用皮肤材质 + 体态） --
+
+function scheduleSkinRender() {
+  if (!current.value) return
+  if (skinTimer) clearTimeout(skinTimer)
+  skinTimer = setTimeout(renderSkinLive, 500)
+}
+
+async function renderSkinLive() {
+  const c = current.value
+  if (!c || !c.preset_id || !previewSkinId.value || !previewAction.value) {
+    skinPreviewData.value = null
+    return
+  }
+  skinRendering.value = true
+  try {
+    const r = await api.skin3dData(previewAction.value,
+      `preset=${encodeURIComponent(c.preset_id)}&skin_id=${encodeURIComponent(previewSkinId.value)}`)
+    if (r.ok && r.frames) skinPreviewData.value = r
+    else skinPreviewData.value = null
+  } catch (e) { skinPreviewData.value = null }
+  skinRendering.value = false
+}
+
+/** 导出 GLB：预设（物种+体型+动作）+ 皮肤（材质+体态）→ 蒙皮 → 后端导出最终素材 */
+async function exportGlb() {
+  const c = current.value
+  if (!c || !previewSkinId.value || !previewAction.value) return
+  exporting.value = true
+  try {
+    const url = `/api/skin3d/export/${encodeURIComponent(previewAction.value)}?preset=${encodeURIComponent(c.preset_id)}&skin_id=${encodeURIComponent(previewSkinId.value)}`
+    const resp = await fetch(url)
+    if (!resp.ok) {
+      const j = await resp.json().catch(() => ({}))
+      throw new Error(j.error || 'GLB 导出失败')
+    }
+    const blob = await resp.blob()
+    const dl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = dl
+    a.download = `${c.preset_id}_${previewAction.value}.glb`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(dl), 3000)
+    ElMessage.success('GLB 已导出（预设+皮肤 → 蒙皮 → 动画）')
+  } catch (e) { ElMessage.error(e.message) }
+  exporting.value = false
+}
+
 onBeforeUnmount(() => {
   if (renderTimer) clearTimeout(renderTimer)
-  if (playTimer) clearInterval(playTimer)
+  if (skinTimer) clearTimeout(skinTimer)
 })
 </script>
 
