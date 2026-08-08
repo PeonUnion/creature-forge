@@ -94,7 +94,9 @@ function buildSkinned(d) {
   }
   for (const n of bn) if (fkTree[n] == null) place(n, null)
   const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.BufferAttribute(flipY(d.frames[0] || []), 3))
+  // 导出用绑定姿态顶点（mesh.vertices）；非导出（预览）由父组件用 frames 驱动
+  const bindPos = (d.mesh && d.mesh.vertices) || d.frames[0] || []
+  geo.setAttribute('position', new THREE.BufferAttribute(flipY(bindPos), 3))
   if (m.uvs && m.uvs.length) geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(m.uvs), 2))
   if (m.normals && m.normals.length) geo.setAttribute('normal', new THREE.BufferAttribute(flipY(m.normals), 3))
   if (m.indices && m.indices.length) geo.setIndex(m.indices)

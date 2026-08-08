@@ -209,6 +209,7 @@ class ApiService:
         return {"ok": True,
                 "mesh": {"indices": mesh["indices"], "uvs": mesh["uvs"],
                          "normals": mesh["normals"], "vertex_count": mesh["vertex_count"],
+                         "vertices": mesh["vertices"],  # 绑定姿态顶点（导出 glTF 用）
                          "materials": mesh.get("materials", {})},
                 "boneNames": skin["weights"]["boneNames"],
                 "weights": skin["weights"]["perVertex"],
@@ -227,6 +228,31 @@ class ApiService:
         mesh = json.loads((root / "mesh.json").read_text(encoding="utf-8"))
         weights = json.loads((root / "weights.json").read_text(encoding="utf-8"))
         return {"mesh": mesh, "weights": weights}
+
+    def export_glb(self, action_id: str, *, species: str | None = None,
+                   body: dict | None = None, params: dict | None = None,
+                   out: str | None = None) -> dict | bytes:
+        """导出 .glb（骨骼 + 蒙皮网格 + 真实动捕动作动画），供 Godot/Unity/Blender 导入。
+
+        out 给出路径时写文件并返回 {ok, glb, bytes}；否则返回 GLB 二进制 bytes。
+        """
+        from .skeleton3d import build_skeleton_3d
+        from .gltf import export_glb as _export_glb
+        if species:
+            motion = self.species.get_action(species, action_id)
+            species_id = species
+        else:
+            found = self.species.find_action(action_id)
+            if not found:
+                raise KeyError(f"3D action not found: {action_id}")
+            species_id, motion = found
+        skel3d = build_skeleton_3d(species_id, body=body, species_root=self.species._root)
+        skin = self._load_skin(species_id)
+        glb = _export_glb(skel3d, skin, motion, params)
+        if out:
+            Path(out).write_bytes(glb)
+            return {"ok": True, "glb": str(out), "bytes": len(glb)}
+        return glb
 
     def render_skeleton3d(self, species_id: str, *, yaw: float = 0, pitch: float = 0,
                           dist: float = 1.0, pan_x: float = 0, pan_y: float = 0,

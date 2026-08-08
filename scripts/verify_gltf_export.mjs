@@ -57,7 +57,8 @@ async function main() {
   })(Object.keys(fkTree).find((j) => fkTree[j] == null), null)
   // 几何 + 权重
   const geo = new THREE.BufferGeometry()
-  geo.setAttribute('position', new THREE.BufferAttribute(flipY(frames[0] || []), 3))
+  const bindPos = (m.vertices && m.vertices.length) ? m.vertices : (frames[0] || [])
+  geo.setAttribute('position', new THREE.BufferAttribute(flipY(bindPos), 3))
   if (m.uvs?.length) geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(m.uvs), 2))
   if (m.normals?.length) geo.setAttribute('normal', new THREE.BufferAttribute(flipY(m.normals), 3))
   if (m.indices?.length) geo.setIndex(m.indices)

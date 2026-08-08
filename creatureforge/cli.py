@@ -169,6 +169,10 @@ def cmd_render(args) -> None:
             _save_data_url(out, result["gif"])
         else:
             _save_data_url(out, result.get("data_url", ""))
+    elif args.mode == "skin":
+        # 蒙皮 glTF 导出：骨骼 + 蒙皮网格 + 真实动捕动作动画 → .glb（Godot/Unity/Blender）
+        result = svc.export_glb(args.id, species=args.species, out=args.out)
+        _json(result)
 
 
 # -- 参数解析 --
@@ -235,6 +239,8 @@ def build_parser() -> argparse.ArgumentParser:
     r1 = rsub.add_parser("live"); r1.add_argument("--species", required=True)
     r1.add_argument("--body", help="体型参数 a=1,b=2"); r1.add_argument("--actions", help="动作参数 walk3d=intensity=1.2")
     r1.add_argument("--action", help="动作 id"); _add_render_opts(r1)
+    r1 = rsub.add_parser("skin"); r1.add_argument("id", help="action id")
+    r1.add_argument("--species", help="限定物种"); _add_render_opts(r1)
 
     # self-update
     up = sub.add_parser("upgrade", help="检查并更新到最新版（GitHub Releases）")
