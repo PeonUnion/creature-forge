@@ -108,40 +108,19 @@ jobs:
           path: release/
           merge-multiple: true
 
-      - name: Generate release notes (CHANGELOG or commit summary)
+      - name: Generate release notes (from git log via gen_changelog.py)
         shell: bash
         run: |
           VER="${GITHUB_REF_NAME#v}"
-          python - "$VER" <<'PY'
-          import re, subprocess, sys
-          ver = sys.argv[1]
-          text = open('CHANGELOG.md', encoding='utf-8').read()
-          # 1) 优先：CHANGELOG 精确版本块（如 [0.1.0]）
-          m = re.search(
-              r'^## \[[^\]]*' + re.escape(ver) + r'[^\]]*\]\s*-\s*\S+.*?(?=^## \[|\Z)',
-              text, re.S | re.M)
-          if m:
-              body = m.group(0).strip()
-          else:
-              # 2) fallback：基于 commit 消息总结（上一 tag → 当前 tag；无上一 tag 则全历史）
-              ref = 'v' + ver
-              prev = ''
-              r = subprocess.run(
-                  ['git', 'describe', '--tags', '--abbrev=0', ref + '~1'],
-                  capture_output=True, text=True)
-              if r.returncode == 0 and r.stdout.strip():
-                  prev = r.stdout.strip()
-              rng = (prev + '..' + ref) if prev else ref
-              logs = subprocess.run(
-                  ['git', 'log', '--no-merges', '--pretty=format:%s', rng],
-                  capture_output=True, text=True).stdout.strip().split('\n')
-              lines = [l.strip() for l in logs if l.strip()]
-              if lines:
-                  body = f'## Commits ({ver})\n\n' + '\n'.join(f'- {l}' for l in lines)
-              else:
-                  body = f'## {ver}\n\n（无 CHANGELOG 条目且无提交记录）'
-          open('release-body.md', 'w', encoding='utf-8').write(body + '\n')
-          PY
+          # 结构化 Release Notes：Conventional Commits 按 tag 区间分组（Added/Fixed/Changed），无需维护 CHANGELOG
+          python scripts/gen_changelog.py --tag "v${VER}" --raw > release-body.md 2>/dev/null || true
+          if [ ! -s release-body.md ]; then
+            # 兜底：纯 commit 列表（非 Conventional 提交 / 异常时）
+            ref="v${VER}"
+            prev="$(git describe --tags --abbrev=0 "$ref~1" 2>/dev/null || true)"
+            rng="${prev:+$prev..}$ref"
+            git log --no-merges --pretty=format:%s "$rng" | sed '/^$/d' | sed 's/^/- /' > release-body.md
+          fi
           echo "Release body 行数: $(wc -l < release-body.md)"
 
       # 反复重推同 tag 会产生重复 release/draft → GitHub API 拒绝 update（already_exists）。

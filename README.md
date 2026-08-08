@@ -97,15 +97,17 @@ PyInstaller builds embed-web **server / cli** binaries; GitHub Actions publishes
 python scripts/build_release.py   # → dist/creature-forge-server-<ver> / creature-forge-cli-<ver>
 ```
 
-**Release flow (SemVer + Keep a Changelog)**:
+**Release flow (SemVer + Conventional Commits, no manual changelog)**:
 
-1. Update `CHANGELOG.md` (concise, user-visible changes grouped by Added / Changed / Fixed)
+1. Commit changes with Conventional Commits (`feat:` / `fix:` / `refactor:` / ...)
 2. Tag to trigger Actions build → auto GitHub Release:
    - `v1.0.0` — stable (MAJOR: breaking API)
    - `v0.4.0` — minor (MINOR: backward-compatible features)
    - `v0.3.1` — fix/patch (PATCH: bug fixes)
    - `v0.4.0-rc.1` — preview (pre-release suffix `-alpha/-beta/-rc` → auto Pre-release)
-3. Release Notes auto-extracted from the matching `CHANGELOG.md` version block
+3. Release Notes auto-generated from git history (Conventional Commits grouped by Added / Fixed / Changed) via `scripts/gen_changelog.py` — no `CHANGELOG.md` to maintain
+
+Preview the auto notes locally before tagging: `python scripts/gen_changelog.py --tag v0.4.0-rc.1 --raw`
 
 Packaged binaries default to `~/.creatureforge/data` (species seeded from bundle on first run; presets writable/persistent), overridable via `--data-dir`.
 

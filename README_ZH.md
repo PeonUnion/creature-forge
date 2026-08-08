@@ -97,15 +97,17 @@ cd ../.. && .venv/bin/python creatureforge/server.py --port 8765   # 后端服�
 python scripts/build_release.py   # 产物 dist/creature-forge-server-<ver> / creature-forge-cli-<ver>
 ```
 
-**发布流程（SemVer + Keep a Changelog）**：
+**发布流程（SemVer + Conventional Commits，无需手动 changelog）**：
 
-1. 更新 `CHANGELOG.md`（按 Added / Changed / Fixed 分类，有取舍地汇总用户可见变更）
+1. 提交遵循 Conventional Commits（`feat:` / `fix:` / `refactor:` ...）
 2. 打 tag 触发 Actions 构建 → 自动生成 GitHub Release：
    - `v1.0.0` — 正式版（MAJOR：不兼容 API）
    - `v0.4.0` — 小版本（MINOR：向后兼容的新功能）
    - `v0.3.1` — fix 版本（PATCH：缺陷修复）
    - `v0.4.0-rc.1` — 预览版（预发布后缀 `-alpha/-beta/-rc` → 自动标记 Pre-release）
-3. Release Notes 自动从 `CHANGELOG.md` 提取对应版本块
+3. Release Notes 由 git 历史自动生成（Conventional Commits 按 Added / Fixed / Changed 分组，`scripts/gen_changelog.py`）——**无需维护 CHANGELOG.md**
+
+打 tag 前可本地预览自动 notes：`python scripts/gen_changelog.py --tag v0.4.0-rc.1 --raw`
 
 二进制默认数据目录为 `~/.creatureforge/data`（首次运行从 bundle 播种物种；预设持久化可写），
 可用 `--data-dir` 覆盖。
