@@ -100,6 +100,7 @@ def derive_skeleton(draft: dict) -> dict:
         "joints": {name: name for name in nodes},
         "chains": draft.get("chains", {}),
         "param_chains": draft.get("param_chains", {}),
+        "params": dict(draft.get("params", {}) or {}),   # 物种级坐标参数（与 species_id 同级）
         "bones_3d": bones_3d,
         "fk_tree": fk_tree,
         "constraints": {
@@ -219,6 +220,7 @@ class SpeciesWizard:
             "nodes": nodes,
             "chains": dict(skeleton.get("chains", {}) or {}),
             "param_chains": dict(skeleton.get("param_chains", {}) or {}),
+            "params": dict(skeleton.get("params", {}) or {}),
             "default": {
                 "positions_3d": dict(default.get("positions_3d", {}) or {}),
                 "canvas": default.get("canvas", {"width": 960, "height": 600, "floor_y": 470.0}),
@@ -504,6 +506,129 @@ class SpeciesWizard:
         self._save_draft(self._draft_path(species_id), draft)
         return self._view(draft)
 
+    # -- 坐标参数化（物种级 params，暴露给预设；数值=常量，表达式=计算参数） --
+
+    def set_coord_param(self, species_id: str, name: str, *, label: str | None = None,
+                        default: float | None = None, min: float | None = None,
+                        max: float | None = None, step: float | None = None) -> dict:
+        """定义/更新物种级坐标参数（skeleton 顶层 params；引用名+label）。"""
+        draft = self._load_draft(species_id)
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("param name required")
+        params = draft.setdefault("params", {})
+        cur = dict(params.get(name, {}) or {})
+        if label is not None:
+            cur["label"] = str(label)
+        for k in ("default", "min", "max", "step"):
+            v = locals().get(k)
+            if v is not None:
+                cur[k] = float(v)
+        params[name] = cur
+        self._save_draft(self._draft_path(species_id), draft)
+        return self._view(draft)
+
+    def apply_coords(self, species_id: str, positions: dict | None = None,
+                     params: dict | None = None) -> dict:
+        """整体写入坐标（含表达式对象）与坐标参数定义（保存按钮统一提交）。"""
+        draft = self._load_draft(species_id)
+        if positions is not None:
+            draft.setdefault("default", {})["positions_3d"] = positions
+        if params is not None:
+            draft["params"] = params
+        self._save_draft(self._draft_path(species_id), draft)
+        return self._view(draft)
+
+    def set_coord_expr(self, species_id: str, joint: str, axis: str, expr) -> dict:
+        """配置关节某轴坐标：数值=常量；dict=计算参数引用（如 {"param":..} / {"neg":..}）。"""
+        draft = self._load_draft(species_id)
+        if joint not in draft["nodes"]:
+            raise KeyError(f"joint not found: {joint}")
+        if axis not in ("x", "y", "z"):
+            raise ValueError("axis must be x/y/z")
+        pos3d = draft.setdefault("default", {}).setdefault("positions_3d", {})
+        cur = pos3d.get(joint)
+        if isinstance(cur, list) and len(cur) == 3:
+            cur = {"x": cur[0], "y": cur[1], "z": cur[2]}
+        elif not isinstance(cur, dict):
+            cur = {}
+        cur[axis] = expr
+        pos3d[joint] = cur
+        self._save_draft(self._draft_path(species_id), draft)
+        return self._view(draft)
+
+    def extract_sym_params(self, species_id: str, *, prefix: str = "sym") -> dict:
+        """对称参数提取：nodes 对称对中数值相同/相反的分量提取为共享参数（左右引用/取负）。"""
+        draft = self._load_draft(species_id)
+        nodes = draft["nodes"]
+        pos3d = draft.setdefault("default", {}).setdefault("positions_3d", {})
+        params = draft.setdefault("params", {})
+        axes = [("x", 0), ("y", 1), ("z", 2)]
+        center_x = float((draft.get("default", {}).get("canvas", {}) or {}).get("width", 960)) / 2.0
+        done: set[str] = set()
+        n = 0
+        for name, nd in nodes.items():
+            if name in done:
+                continue
+            sym = nd.get("sym")
+            if not sym or sym not in nodes or sym in done:
+                continue
+            done.add(name)
+            done.add(sym)
+            for axis, idx in axes:
+                va = self._coord_val(pos3d.get(name), idx)
+                vb = self._coord_val(pos3d.get(sym), idx)
+                if va is None or vb is None:
+                    continue
+                tol = max(2.0, abs(va) * 0.02, abs(vb) * 0.02)  # 容忍对称噪声/取整差
+                if abs(va - vb) < tol:
+                    # 相同 → 共享参数（左右引用同一参数）
+                    pname = f"{prefix}_{axis}_{n}"
+                    params[pname] = {"label": f"{axis} 对称参数", "default": va}
+                    self._set_axis_expr(pos3d, name, axis, {"param": pname})
+                    self._set_axis_expr(pos3d, sym, axis, {"param": pname})
+                    n += 1
+                elif axis == "x" and abs((va + vb) - 2 * center_x) < tol:
+                    # x 中心对称（互补，镜像 x→960-x）：偏移参数 c+d / c-d
+                    d = va - center_x
+                    pname = f"{prefix}_{axis}_{n}"
+                    params[pname] = {"label": f"{axis} 对称偏移", "default": d}
+                    self._set_axis_expr(pos3d, name, axis,
+                                        {"add": [{"const": center_x}, {"param": pname}]})
+                    self._set_axis_expr(pos3d, sym, axis,
+                                        {"add": [{"const": center_x}, {"neg": {"param": pname}}]})
+                    n += 1
+                elif abs(va + vb) < tol:
+                    # 相反 → neg（对称角度/相对位移）
+                    pname = f"{prefix}_{axis}_{n}"
+                    params[pname] = {"label": f"{axis} 对称角度", "default": va}
+                    self._set_axis_expr(pos3d, name, axis, {"param": pname})
+                    self._set_axis_expr(pos3d, sym, axis, {"neg": {"param": pname}})
+                    n += 1
+        self._save_draft(self._draft_path(species_id), draft)
+        return self._view(draft)
+
+    @staticmethod
+    def _coord_val(v, idx):
+        if isinstance(v, (list, tuple)) and len(v) > idx:
+            val = v[idx]
+            return float(val) if isinstance(val, (int, float)) else None
+        if isinstance(v, dict):
+            key = ("x", "y", "z")[idx]
+            val = v.get(key)
+            return float(val) if isinstance(val, (int, float)) else None
+        return None
+
+    @staticmethod
+    def _set_axis_expr(pos3d, joint, axis, expr):
+        cur = pos3d.get(joint)
+        if isinstance(cur, (list, tuple)) and len(cur) == 3:
+            cur = {"x": cur[0], "y": cur[1], "z": cur[2]}
+        elif not isinstance(cur, dict):
+            cur = {}
+        cur[axis] = expr
+        pos3d[joint] = cur
+
     # -- 姿态快速操作（旋转 / 平移，避免笔直朝天等姿势问题） --
 
     @staticmethod
@@ -643,6 +768,7 @@ class SpeciesWizard:
             "nodes": {n: dict(nd) for n, nd in nodes.items()},
             "chains": draft.get("chains", {}),
             "param_chains": draft.get("param_chains", {}),
+            "params": draft.get("params", {}),   # 物种级坐标参数（引用名+label，暴露给预设）
             "positions_3d": draft.get("default", {}).get("positions_3d", {}),
             "canvas": draft.get("default", {}).get("canvas", {}),
             "head_radius": draft.get("default", {}).get("head_radius", 12.5),

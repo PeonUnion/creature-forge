@@ -640,6 +640,18 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
                 return self._json(self.api.wizard_set_pose(sp, body.get("name", ""), body.get("pos", []) or []))
             if act == ["apply_pose"]:
                 return self._json(self.api.wizard_apply_pose(sp, body.get("positions") or {}))
+            if act == ["coord", "param"]:
+                return self._json(self.api.wizard_set_coord_param(
+                    sp, body.get("name", ""), label=body.get("label"), default=body.get("default"),
+                    min=body.get("min"), max=body.get("max"), step=body.get("step")))
+            if act == ["coord", "apply"]:
+                return self._json(self.api.wizard_apply_coords(
+                    sp, positions=body.get("positions"), params=body.get("params")))
+            if act == ["coord", "expr"]:
+                return self._json(self.api.wizard_set_coord_expr(
+                    sp, body.get("joint", ""), body.get("axis", "x"), body.get("expr")))
+            if act == ["coord", "extract"]:
+                return self._json(self.api.wizard_extract_sym_params(sp, prefix=body.get("prefix", "sym")))
             if act == ["rotate"]:
                 return self._json(self.api.wizard_rotate(
                     sp, axis=body.get("axis", "z"), angle=float(body.get("angle", 90)), joint=body.get("joint")))

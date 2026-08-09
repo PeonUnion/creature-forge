@@ -126,6 +126,22 @@ export const api = {
   wizardPoseApply: (id, positions) =>
     raw(`/api/wizard/${encodeURIComponent(id)}/apply_pose`, json({ positions })),
 
+  /** 定义/更新物种级坐标参数（引用名+label，暴露给预设） */
+  wizardCoordParam: (id, name, spec = {}) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/coord/param`, json({ name, ...spec })),
+
+  /** 整体写入坐标（含表达式）与坐标参数定义（保存按钮统一提交） */
+  wizardCoordApply: (id, positions, params) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/coord/apply`, json({ positions, params })),
+
+  /** 配置关节某轴坐标为表达式（数值=常量；{"param":..}/{"neg":..}=计算参数引用） */
+  wizardCoordExpr: (id, joint, axis, expr) =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/coord/expr`, json({ joint, axis, expr })),
+
+  /** 对称参数提取：扫描对称对，相同/相反值提取为共享参数 */
+  wizardCoordExtract: (id, prefix = 'sym') =>
+    raw(`/api/wizard/${encodeURIComponent(id)}/coord/extract`, json({ prefix })),
+
   /** 姿态快速操作：旋转（axis x/y/z，joint 空=整体） */
   wizardRotate: (id, { axis = 'z', angle = 90, joint = null } = {}) =>
     raw(`/api/wizard/${encodeURIComponent(id)}/rotate`, json({ axis, angle, joint })),

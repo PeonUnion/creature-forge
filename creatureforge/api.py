@@ -196,6 +196,22 @@ class ApiService:
     def wizard_apply_pose(self, species_id: str, positions: dict | None = None) -> dict:
         return self.wizard.apply_pose(species_id, positions)
 
+    def wizard_set_coord_param(self, species_id: str, name: str, *, label: str | None = None,
+                               default: float | None = None, min: float | None = None,
+                               max: float | None = None, step: float | None = None) -> dict:
+        return self.wizard.set_coord_param(species_id, name, label=label, default=default,
+                                           min=min, max=max, step=step)
+
+    def wizard_apply_coords(self, species_id: str, positions: dict | None = None,
+                            params: dict | None = None) -> dict:
+        return self.wizard.apply_coords(species_id, positions=positions, params=params)
+
+    def wizard_set_coord_expr(self, species_id: str, joint: str, axis: str, expr) -> dict:
+        return self.wizard.set_coord_expr(species_id, joint, axis, expr)
+
+    def wizard_extract_sym_params(self, species_id: str, *, prefix: str = "sym") -> dict:
+        return self.wizard.extract_sym_params(species_id, prefix=prefix)
+
     def wizard_rotate(self, species_id: str, *, axis: str = "z", angle: float = 90,
                       joint: str | None = None) -> dict:
         return self.wizard.rotate(species_id, axis=axis, angle=angle, joint=joint)

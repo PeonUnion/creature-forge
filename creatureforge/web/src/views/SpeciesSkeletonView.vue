@@ -127,6 +127,26 @@
                 </div>
               </div>
               <div class="sec">
+                <div class="sec-t xform-head">
+                  <span>坐标参数（暴露给预设）</span>
+                  <el-button size="small" text type="primary" :loading="extracting" @click="extractSym">提取对称</el-button>
+                </div>
+                <div class="param-table">
+                  <div v-for="(spec, pname) in (wiz?.params || {})" :key="pname" class="param-row">
+                    <span class="mono pkey">{{ pname }}</span>
+                    <el-input v-model="spec.label" size="small" placeholder="中文名" style="width: 100px" @change="touchParams" />
+                    <el-input-number v-model="spec.default" size="small" :step="1" @change="touchParams" />
+                  </div>
+                </div>
+                <div class="row3 wrap">
+                  <el-input v-model="npName" size="small" placeholder="引用名" style="width: 96px" />
+                  <el-input v-model="npLabel" size="small" placeholder="中文名" style="width: 96px" />
+                  <el-input-number v-model="npDefault" size="small" :step="1" />
+                  <el-button size="small" @click="addCoordParam">加参数</el-button>
+                </div>
+                <p class="hint small">参数化分量存为引用表达式，改默认值对称侧同步；保存后暴露给预设快速建变体。</p>
+              </div>
+              <div class="sec">
                 <div class="sec-t">新增关节</div>
                 <el-input v-model="nj.name" size="small" placeholder="关节名，如 head / wing_l" />
                 <el-select v-model="nj.parent" size="small" placeholder="父关节（空 = 根）" clearable filterable style="width: 100%">
@@ -314,11 +334,40 @@ const jointTree = computed(() => {
   return out
 })
 
+// 坐标表达式求值（数值=常量；dict=参数引用/计算，复用后端 motion DSL 子集）
+function evalCoordExpr(v, params) {
+  if (typeof v === 'number') return v
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    const k = Object.keys(v)[0]
+    const a = v[k]
+    switch (k) {
+      case 'const': return a
+      case 'param': return params[a] ?? 0
+      case 'neg': return -evalCoordExpr(a, params)
+      case 'add': return a.reduce((s, x) => s + evalCoordExpr(x, params), 0)
+      case 'sub': return evalCoordExpr(a[0], params) - evalCoordExpr(a[1], params)
+      case 'mul': return a.reduce((s, x) => s * evalCoordExpr(x, params), 1)
+      case 'div': return evalCoordExpr(a[0], params) / (evalCoordExpr(a[1], params) || 1)
+      default: return 0
+    }
+  }
+  return 0
+}
+// 坐标参数值（skeleton 顶层 params 默认值；可被预设 body 覆盖）
+const coordParamsVal = computed(() => {
+  const out = {}
+  for (const [k, s] of Object.entries(wiz.value?.params || {})) out[k] = Number(s?.default ?? 0)
+  return out
+})
 const preview = computed(() => {
   const joints = {}
   const bones = []
+  const P = coordParamsVal.value
   for (const [name, nd] of Object.entries(nodes.value)) {
-    joints[name] = pos3d.value[name] || [0, 0, 0]
+    const raw = pos3d.value[name]
+    if (Array.isArray(raw)) joints[name] = raw.map(v => evalCoordExpr(v, P))
+    else if (raw && typeof raw === 'object') joints[name] = ['x', 'y', 'z'].map(a => evalCoordExpr(raw[a], P))
+    else joints[name] = [0, 0, 0]
     if (nd.parent) bones.push([nd.parent, name])
   }
   return { joints, bones }
@@ -411,7 +460,7 @@ function localRotate(axis, angle, joint) {
   const cz = pts.reduce((a, b) => a + b[2], 0) / pts.length
   const rad = angle * Math.PI / 180, c = Math.cos(rad), s = Math.sin(rad)
   for (const n of names) {
-    if (!p[n]) continue
+    if (!Array.isArray(p[n])) continue
     const [x, y, z] = p[n]
     const dx = x - cx, dy = y - cy, dz = z - cz
     let nx = x, ny = y, nz = z
@@ -428,8 +477,8 @@ function localTranslate(dx, dy, dz, joint) {
   pushUndo()
   const p = wiz.value.positions_3d ||= {}
   const names = joint ? subtreeOf(joint) : Object.keys(p)
-  for (const n of names) if (p[n]) p[n] = [r2(p[n][0] + dx), r2(p[n][1] + dy), r2(p[n][2] + dz)]
-  if (joint && joint === selJoint.value && p[joint]) {
+  for (const n of names) if (Array.isArray(p[n])) p[n] = [r2(p[n][0] + dx), r2(p[n][1] + dy), r2(p[n][2] + dz)]
+  if (joint && joint === selJoint.value && Array.isArray(p[joint])) {
     const [x, y, z] = p[joint]; xf.value.pos = { x, y, z }
   }
   dirty.value = true
@@ -446,6 +495,9 @@ watch(selJoint, (name) => {
 function clearSel() { selJoint.value = ''; hoverJoint.value = '' }
 function applyPos() {
   if (!selJoint.value || !wiz.value) return
+  if (wiz.value.positions_3d?.[selJoint.value] && !Array.isArray(wiz.value.positions_3d[selJoint.value])) {
+    ElMessage.info('该关节为参数化坐标，请通过「坐标参数」面板修改'); return
+  }
   pushUndo()
   const { x, y, z } = xf.value.pos
   wiz.value.positions_3d ||= {}
@@ -463,11 +515,11 @@ function onDragEnd({ name, dx, dy, dz }) {
   pushUndo()
   const p = wiz.value.positions_3d ||= {}
   if (name) {
-    if (p[name]) p[name] = [r2(p[name][0] + dx), r2(p[name][1] + dy), r2(p[name][2] + dz)]
+    if (Array.isArray(p[name])) p[name] = [r2(p[name][0] + dx), r2(p[name][1] + dy), r2(p[name][2] + dz)]
   } else {
-    for (const k of Object.keys(p)) if (p[k]) p[k] = [r2(p[k][0] + dx), r2(p[k][1] + dy), r2(p[k][2] + dz)]
+    for (const k of Object.keys(p)) if (Array.isArray(p[k])) p[k] = [r2(p[k][0] + dx), r2(p[k][1] + dy), r2(p[k][2] + dz)]
   }
-  if (name && selJoint.value === name && p[name]) {
+  if (name && selJoint.value === name && Array.isArray(p[name])) {
     const [x, y, z] = p[name]; xf.value.pos = { x, y, z }
   }
   dirty.value = true
@@ -475,20 +527,49 @@ function onDragEnd({ name, dx, dy, dz }) {
 // 编辑视图与网格吸附
 const editPlane = ref('front')    // front/back=正/背面(锁z) / left/right=左右侧视(锁x) / top/bottom=俯/仰视(锁y)
 
+// 坐标参数（物种级，暴露给预设；引用名+label）
+const extracting = ref(false)
+const npName = ref('')
+const npLabel = ref('')
+const npDefault = ref(0)
+function touchParams() { dirty.value = true }
+async function extractSym() {
+  extracting.value = true
+  try {
+    await api.wizardCoordExtract(props.speciesId)
+    await refresh()
+    ElMessage.success('已提取对称参数')
+  } catch (e) { ElMessage.error(e.message) }
+  extracting.value = false
+}
+function addCoordParam() {
+  const name = npName.value.trim()
+  if (!name || !wiz.value) { ElMessage.warning('请填引用名'); return }
+  wiz.value.params ||= {}
+  wiz.value.params[name] = { label: npLabel.value.trim() || name, default: npDefault.value }
+  npName.value = ''; npLabel.value = ''
+  dirty.value = true
+}
+
 // 全部关节坐标总表（批量查看/编辑 XYZ，直接修错位关节）
 const showCoords = ref(false)
 const coordVals = ref({})
 function syncCoordVals() {
   const out = {}
+  const P = coordParamsVal.value
   for (const n of jointNames.value) {
-    const p = pos3d.value[n] || [0, 0, 0]
-    out[n] = { x: p[0], y: p[1], z: p[2] }
+    const raw = pos3d.value[n]
+    const xyz = Array.isArray(raw) ? raw.map(v => evalCoordExpr(v, P))
+      : (raw && typeof raw === 'object') ? ['x', 'y', 'z'].map(a => evalCoordExpr(raw[a], P))
+      : [0, 0, 0]
+    out[n] = { x: xyz[0], y: xyz[1], z: xyz[2] }
   }
   coordVals.value = out
 }
 function applyCoord(n) {
   const v = coordVals.value[n]
   if (!wiz.value || !v) return
+  if (wiz.value.positions_3d?.[n] && !Array.isArray(wiz.value.positions_3d[n])) return  // 参数化关节不覆盖表达式
   pushUndo()
   wiz.value.positions_3d ||= {}
   wiz.value.positions_3d[n] = [r2(v.x), r2(v.y), r2(v.z)]
@@ -552,8 +633,10 @@ const defaultJson = ref('')
 async function refresh() {
   // 有未保存的姿态修改时，保留本地坐标（结构类操作 refresh 不会冲掉拖拽结果）
   const localPos = dirty.value && wiz.value ? { ...(wiz.value.positions_3d || {}) } : null
+  const localParams = dirty.value && wiz.value ? { ...(wiz.value.params || {}) } : null
   wiz.value = await api.wizardGet(props.speciesId)
   if (localPos) wiz.value.positions_3d = { ...(wiz.value.positions_3d || {}), ...localPos }
+  if (localParams) wiz.value.params = { ...(wiz.value.params || {}), ...localParams }
   canvas.value = { ...(wiz.value?.canvas || { width: 960, height: 600, floor_y: 470 }) }
   syncCoordVals()
 }
@@ -643,6 +726,9 @@ function setPose() {
   if (!wiz.value) return
   pushUndo()
   wiz.value.positions_3d ||= {}
+  if (!Array.isArray(wiz.value.positions_3d[poseJoint.value])) {
+    ElMessage.info('该关节为参数化坐标，请通过「坐标参数」面板修改'); return
+  }
   wiz.value.positions_3d[poseJoint.value] = [r2(pos[0]), r2(pos[1]), r2(pos[2])]
   dirty.value = true
 }
@@ -701,6 +787,10 @@ async function save() {
 .xform-sel { font-family: monospace; font-size: .8rem; color: #409eff; }
 .xform-block { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; border-top: 1px dashed #d9ecff; }
 .xform-t { font-size: .74rem; color: #606266; }
+.param-table { display: flex; flex-direction: column; gap: 4px; max-height: 30vh; overflow-y: auto; }
+.param-row { display: flex; align-items: center; gap: 6px; font-size: .8rem; }
+.param-row .pkey { width: 96px; flex: 0 0 auto; }
+.param-row .el-input-number { width: 110px; flex: 0 0 auto; }
 .coord-table { display: flex; flex-direction: column; gap: 3px; max-height: 50vh; overflow-y: auto; }
 .coord-row { display: flex; align-items: center; gap: 4px; font-size: .8rem; }
 .coord-name { width: 130px; flex: 0 0 auto; }

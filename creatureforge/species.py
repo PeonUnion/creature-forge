@@ -102,6 +102,19 @@ class SpeciesService:
             }
             base.update(old.get(pname, {}))
             params[pname] = base
+        # 骨架坐标参数（skeleton 顶层 params，与 species_id 同级）也暴露给预设：引用名+label
+        for pname, spec in (skel.get("params") or {}).items():
+            if pname in params:
+                continue  # 与体型参数重名时以体型参数为准
+            base = {
+                "default": spec.get("default", 0.0),
+                "min": spec.get("min", -1e9),
+                "max": spec.get("max", 1e9),
+                "step": spec.get("step", 1.0),
+                "label": spec.get("label") or pname,
+            }
+            base.update(old.get(pname, {}))
+            params[pname] = base
         return {
             "schema": "creatureforge_preset_schema_v1",
             "species": skel.get("species_id"),

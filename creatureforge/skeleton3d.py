@@ -132,6 +132,34 @@ def apply_proportions_3d(joints3d: dict[str, list[float]],
 
 
 
+def _coord_params(species: dict) -> dict:
+    """物种级坐标参数解析：skeleton.json 顶层 ``params``（与 species_id 同级）的默认值。"""
+    out: dict = {}
+    for k, v in (species.get("params") or {}).items():
+        out[k] = float(v.get("default", 0.0)) if isinstance(v, dict) else float(v or 0.0)
+    return out
+
+
+def _resolve_coord(v, params: dict) -> float:
+    """坐标分量求值：数值=常量；dict=表达式（复用 motion._eval DSL：param 引用/neg 对称等）。"""
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, dict):
+        from .motion import _eval
+        ctx = {"params": params, "index": 0, "frame_count": 1, "phase": 0.0, "signals": {}}
+        return float(_eval(v, ctx))
+    return 0.0
+
+
+def _resolve_joint_coord(v, params: dict) -> list[float]:
+    """单关节坐标：数组 [x,y,z]（旧）或对象 {x:expr,y:expr,z:expr}（新，含参数引用）。"""
+    if isinstance(v, dict):
+        return [_resolve_coord(v.get("x", 0.0), params),
+                _resolve_coord(v.get("y", 0.0), params),
+                _resolve_coord(v.get("z", 0.0), params)]
+    return [_resolve_coord(c, params) for c in v]
+
+
 def build_skeleton_3d(species_id: str = "human", body: dict | None = None,
                       species_root: Path | None = None) -> dict:
     """读取 JSON 定义的 3D 骨架（数据驱动，基于物种默认参数）。
@@ -145,9 +173,15 @@ def build_skeleton_3d(species_id: str = "human", body: dict | None = None,
     default = load_default(species_id, species_root)
     species = load_species(species_id, species_root)
 
-    # 3D 坐标：物种默认参数（JSON 显式定义）
+    # 3D 坐标：数值=常量；表达式=计算参数（物种级 params，复用 motion DSL）
+    params = _coord_params(species)
+    if body:
+        # 预设 body 可覆盖坐标参数（骨架坐标表达式求值用覆盖后的值）
+        for k in list(params):
+            if body.get(k) is not None:
+                params[k] = float(body[k])
     joints3d: dict[str, list[float]] = {
-        j: [float(v[0]), float(v[1]), float(v[2])]
+        j: _resolve_joint_coord(v, params)
         for j, v in default.get("positions_3d", {}).items()
     }
     if body:
