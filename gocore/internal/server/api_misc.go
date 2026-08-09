@@ -86,9 +86,36 @@ func (s *Server) routeWizard(w http.ResponseWriter, r *http.Request) {
 	s.fail(w, errors.New("wizard not migrated yet (creatureforge/wizard.py)"), http.StatusNotImplemented)
 }
 
-// routePreset3d — preset rendering (PNG). Pending: render package.
+// routePreset3d — preset rendering (skeleton or action frame/GIF).
 func (s *Server) routePreset3d(w http.ResponseWriter, r *http.Request) {
-	s.fail(w, errors.New("preset3d render not implemented yet (Go render package pending)"), http.StatusNotImplemented)
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	parts := pathParts(r.URL.Path, "/api/preset3d")
+	if len(parts) != 1 {
+		s.fail(w, errors.New("preset id or 'live' required"), http.StatusBadRequest)
+		return
+	}
+	q := r.URL.Query()
+	cam := parseCamQuery(r)
+	var body, actions map[string]float64
+	if parts[0] == "live" {
+		species := q.Get("species")
+		if species == "" {
+			s.fail(w, errors.New("live preset requires species"), http.StatusBadRequest)
+			return
+		}
+		_ = json.Unmarshal([]byte(q.Get("body")), &body)
+		_ = json.Unmarshal([]byte(q.Get("actions")), &actions)
+	}
+	actionID := q.Get("action")
+	result, err := s.renderPreset3d(parts[0], q.Get("species"), body, actions, actionID, cam)
+	if err != nil {
+		s.fail(w, err, http.StatusInternalServerError)
+		return
+	}
+	s.json(w, result, http.StatusOK)
 }
 
 // actionExtractParams — split a single intensity into per-part/dimension

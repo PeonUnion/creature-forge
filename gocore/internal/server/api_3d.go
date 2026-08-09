@@ -160,8 +160,13 @@ func (s *Server) routeSkeleton3d(w http.ResponseWriter, r *http.Request) {
 		s.json(w, data, http.StatusOK)
 		return
 	}
-	// PNG render (implemented by the render package — todo)
-	s.fail(w, errors.New("PNG render not implemented yet (Go render package pending)"), http.StatusNotImplemented)
+	// PNG render (skeleton preview)
+	url, err := s.renderSkeleton3d(parts[0], cam, body)
+	if err != nil {
+		s.fail(w, err, http.StatusInternalServerError)
+		return
+	}
+	s.json(w, map[string]any{"ok": true, "data_url": url}, http.StatusOK)
 }
 
 // skeleton3dData mirrors api.skeleton3d_data (WebGL-ready joint data).
@@ -241,10 +246,6 @@ func (s *Server) routeMotion3d(w http.ResponseWriter, r *http.Request) {
 		if pj := q.Get("params"); pj != "" {
 			_ = json.Unmarshal([]byte(pj), &params)
 		}
-		transition := q.Get("transition_from")
-		if transition != "" {
-			transition = ""
-		}
 		tf, _ := strconv.Atoi(q.Get("transition_frames"))
 		if tf <= 0 {
 			tf = 6
@@ -257,7 +258,14 @@ func (s *Server) routeMotion3d(w http.ResponseWriter, r *http.Request) {
 		s.json(w, data, http.StatusOK)
 		return
 	}
-	s.fail(w, errors.New("PNG render not implemented yet (Go render package pending)"), http.StatusNotImplemented)
+	// PNG/GIF/frames/sprite render
+	cam := parseCamQuery(r)
+	result, err := s.renderMotion3d(parts[0], q.Get("species"), cam)
+	if err != nil {
+		s.fail(w, err, http.StatusInternalServerError)
+		return
+	}
+	s.json(w, result, http.StatusOK)
 }
 
 // motion3dData mirrors api.motion3d_data.
