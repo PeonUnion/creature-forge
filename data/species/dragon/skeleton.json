@@ -81,11 +81,7 @@
         "tail3"
       ],
       "anchor": "body_mid",
-      "label": "躯干长",
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "default": 1.0
+      "label": "躯干长"
     },
     "horn_scale": {
       "param": "horn_scale",
@@ -94,11 +90,7 @@
         "horn_r"
       ],
       "anchor": "head",
-      "label": "角大小",
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "default": 1.0
+      "label": "角大小"
     },
     "whisker_len": {
       "param": "whisker_len",
@@ -107,33 +99,73 @@
         "whisker_r"
       ],
       "anchor": "head",
-      "label": "须长",
-      "min": 0.6,
-      "max": 1.6,
-      "step": 0.05,
-      "default": 1.0
+      "label": "须长"
+    }
+  },
+  "params": {
+    "sym_x_0": {
+      "label": "x 对称参数",
+      "default": 612.18
     },
-    "overall": {
-      "param": "overall_scale",
-      "global": "all",
-      "joints": [],
-      "anchor": "center",
-      "label": "整体大小",
-      "min": 0.5,
-      "max": 2.0,
-      "step": 0.05,
-      "default": 1.0
+    "sym_z_1": {
+      "label": "z 对称参数",
+      "default": 16.45
     },
-    "height": {
-      "param": "height",
-      "global": "y",
-      "joints": [],
-      "anchor": "floor",
-      "label": "身高",
-      "min": 0.5,
-      "max": 1.5,
-      "step": 0.05,
-      "default": 1.0
+    "sym_x_2": {
+      "label": "x 对称参数",
+      "default": 628.18
+    },
+    "sym_z_3": {
+      "label": "z 对称参数",
+      "default": 22.45
+    },
+    "sym_x_4": {
+      "label": "x 对称参数",
+      "default": 580.18
+    },
+    "sym_z_5": {
+      "label": "z 对称参数",
+      "default": -0.55
+    },
+    "sym_x_6": {
+      "label": "x 对称参数",
+      "default": 548.18
+    },
+    "sym_z_7": {
+      "label": "z 对称参数",
+      "default": -16.55
+    },
+    "sym_x_8": {
+      "label": "x 对称参数",
+      "default": 498.18
+    },
+    "sym_z_9": {
+      "label": "z 对称参数",
+      "default": -4.55
+    },
+    "sym_x_10": {
+      "label": "x 对称参数",
+      "default": 462.18
+    },
+    "sym_z_11": {
+      "label": "z 对称参数",
+      "default": -6.55
+    },
+    "sym_x_12": {
+      "label": "x 对称参数",
+      "default": 458.18
+    },
+    "sym_z_13": {
+      "label": "z 对称参数",
+      "default": -0.55
+    },
+    "sym_x_14": {
+      "label": "x 对称参数",
+      "default": 422.18
+    },
+    "sym_z_15": {
+      "label": "z 对称参数",
+      "default": -2.55
     }
   },
   "bones_3d": [

@@ -121,18 +121,62 @@ class PresetService:
         data.pop("schema_info", None)  # schema 由物种派生，不持久化
         data.setdefault("schema", PRESET_SCHEMA)
         self._save(self._path(pid), data)
+        self.bake(pid)  # 保存即烘焙：基于物种参数生成独立数据（脱离物种）
         return pid
 
     def update(self, preset_id: str, data: Preset) -> str:
         path = self._path(preset_id)
         if not path.is_file():
             raise KeyError(f"preset not found: {preset_id}")
+        existing = json.loads(path.read_text(encoding="utf-8"))
         data = dict(data)
         data.pop("schema_info", None)  # schema 由物种派生，不持久化
-        data.setdefault("schema", PRESET_SCHEMA)
-        data["preset_id"] = data.get("preset_id") or preset_id
-        self._save(path, data)
-        return data["preset_id"]
+        data.pop("baked", None)        # 重新烘焙，避免残留旧固化数据
+        merged = {**existing, **data}  # 保留已有字段（species/schema 等），传入值覆盖
+        merged["preset_id"] = merged.get("preset_id") or preset_id
+        merged.setdefault("schema", PRESET_SCHEMA)
+        self._save(path, merged)
+        self.bake(preset_id)  # 参数变更后重新烘焙（保证独立数据最新）
+        return merged["preset_id"]
+
+    def bake(self, preset_id: str) -> dict:
+        """烘焙预设：基于物种参数生成独立数据（脱离物种自身存在）。
+
+        用预设 body 求值生成固化骨架（skel3d：joints/bones/fk_tree/chains 等），
+        并把 body/actions 参数表达式求值为具体数值——之后物种的默认值/参数修改
+        不再影响本预设（渲染优先用 baked 数据）。
+        """
+        path = self._path(preset_id)
+        if not path.is_file():
+            raise KeyError(f"preset not found: {preset_id}")
+        preset = json.loads(path.read_text(encoding="utf-8"))
+        species_id = preset.get("species", "")
+        body = preset.get("body") or {}
+        if not species_id:
+            raise ValueError(f"preset has no species: {preset_id}")
+        from .skeleton3d import build_skeleton_3d
+        skel3d = build_skeleton_3d(species_id, body=body, species_root=self._species._root)
+        # 动作参数数值固化（表达式 → 数值，refs=骨架固化参数）
+        action_vals: dict = {}
+        try:
+            from .motion import _resolve_params
+            for aid, ap in (preset.get("actions") or {}).items():
+                try:
+                    motion = self._species.get_action(species_id, aid)
+                    action_vals[aid] = _resolve_params(motion, ap or {}, refs=skel3d.get("params"))
+                except Exception:
+                    action_vals[aid] = ap or {}
+        except Exception:
+            action_vals = preset.get("actions") or {}
+        preset["baked"] = {
+            "schema": "creatureforge_preset_baked_v1",
+            "species": species_id,
+            "skel3d": skel3d,
+            "body": body,
+            "actions": action_vals,
+        }
+        self._save(path, preset)
+        return preset
 
     def delete(self, preset_id: str) -> str:
         path = self._path(preset_id)

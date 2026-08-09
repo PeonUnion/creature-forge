@@ -12,47 +12,47 @@
     "actions"
   ],
   "joints_3d": [
-    "head",
-    "jaw",
-    "neck",
-    "chest",
-    "sternum",
-    "waist",
-    "abdomen",
-    "pelvis",
-    "clavicle_left",
-    "shoulder_left",
-    "clavicle_right",
-    "shoulder_right",
-    "rib_upper_left",
-    "rib_upper_right",
-    "rib_lower_left",
-    "rib_lower_right",
-    "elbow_left",
-    "wrist_left",
-    "palm_left",
-    "finger_left",
-    "elbow_right",
-    "wrist_right",
-    "palm_right",
-    "finger_right",
-    "hip_left",
     "knee_left",
     "ankle_left",
     "heel_left",
-    "foot_left",
-    "toe_left",
     "hip_right",
     "knee_right",
+    "wrist_right",
+    "palm_right",
+    "foot_left",
+    "toe_left",
+    "sternum",
+    "clavicle_left",
     "ankle_right",
     "heel_right",
+    "pelvis",
+    "abdomen",
+    "chest",
+    "neck",
+    "clavicle_right",
     "foot_right",
-    "toe_right"
+    "toe_right",
+    "elbow_left",
+    "wrist_left",
+    "elbow_right",
+    "hip_left",
+    "palm_left",
+    "rib_upper_right",
+    "shoulder_left",
+    "waist",
+    "shoulder_right",
+    "finger_right",
+    "rib_lower_right",
+    "rib_lower_left",
+    "rib_upper_left",
+    "head",
+    "finger_left",
+    "jaw"
   ],
   "params": {
     "head_scale": {
       "default": 1.0,
-      "min": 0.6,
+      "min": 0.5,
       "max": 1.6,
       "step": 0.05,
       "label": "头大小"
@@ -66,80 +66,136 @@
     },
     "upper_torso_length": {
       "default": 1.0,
-      "min": 0.6,
+      "min": 0.5,
       "max": 1.6,
       "step": 0.05,
       "label": "上躯干长"
     },
     "sternum_length": {
       "default": 1.0,
-      "min": 0.6,
+      "min": 0.5,
       "max": 1.6,
       "step": 0.05,
       "label": "胸骨长度"
     },
     "lower_torso_length": {
       "default": 1.0,
-      "min": 0.6,
+      "min": 0.5,
       "max": 1.6,
       "step": 0.05,
       "label": "下躯干长"
     },
     "shoulder_width": {
       "default": 1.0,
-      "min": 0.6,
+      "min": 0.5,
       "max": 1.6,
       "step": 0.05,
       "label": "肩宽"
     },
     "hip_width": {
       "default": 1.0,
-      "min": 0.6,
+      "min": 0.5,
       "max": 1.6,
       "step": 0.05,
       "label": "髋宽"
     },
     "upper_arm_length": {
       "default": 1.0,
-      "min": 0.6,
+      "min": 0.4,
       "max": 1.6,
       "step": 0.05,
       "label": "上臂长"
     },
     "forearm_length": {
       "default": 1.0,
-      "min": 0.6,
+      "min": 0.4,
       "max": 1.6,
       "step": 0.05,
       "label": "前臂长"
     },
     "thigh_length": {
       "default": 1.0,
-      "min": 0.6,
+      "min": 0.4,
       "max": 1.6,
       "step": 0.05,
       "label": "大腿长"
     },
     "shin_length": {
       "default": 1.0,
-      "min": 0.6,
+      "min": 0.4,
       "max": 1.6,
       "step": 0.05,
       "label": "小腿长"
     },
     "overall_scale": {
       "default": 1.0,
-      "min": 0.5,
+      "min": 0.3,
       "max": 2.0,
       "step": 0.05,
       "label": "整体大小"
     },
     "height": {
       "default": 1.0,
-      "min": 0.5,
+      "min": 0.3,
       "max": 1.5,
       "step": 0.05,
       "label": "身高"
+    },
+    "sym_x_0": {
+      "default": -99.06,
+      "min": -1000000000.0,
+      "max": 1000000000.0,
+      "step": 1.0,
+      "label": "x 对称偏移"
+    },
+    "sym_y_1": {
+      "default": 461.29,
+      "min": -1000000000.0,
+      "max": 1000000000.0,
+      "step": 1.0,
+      "label": "y 对称参数"
+    },
+    "sym_z_2": {
+      "default": 10.96,
+      "min": -1000000000.0,
+      "max": 1000000000.0,
+      "step": 1.0,
+      "label": "z 对称参数"
+    },
+    "sym_x_3": {
+      "default": 58.48000000000002,
+      "min": -1000000000.0,
+      "max": 1000000000.0,
+      "step": 1.0,
+      "label": "x 对称偏移"
+    },
+    "sym_y_4": {
+      "default": 353.57,
+      "min": -1000000000.0,
+      "max": 1000000000.0,
+      "step": 1.0,
+      "label": "y 对称参数"
+    },
+    "sym_z_5": {
+      "default": 10.96,
+      "min": -1000000000.0,
+      "max": 1000000000.0,
+      "step": 1.0,
+      "label": "z 对称参数"
+    },
+    "sym_x_6": {
+      "default": -182.66000000000003,
+      "min": -1000000000.0,
+      "max": 1000000000.0,
+      "step": 1.0,
+      "label": "x 对称偏移"
+    },
+    "sym_x_7": {
+      "default": 44.90999999999997,
+      "min": -1000000000.0,
+      "max": 1000000000.0,
+      "step": 1.0,
+      "label": "x 对称偏移"
     }
   },
   "canvas": {
@@ -161,6 +217,14 @@
     "thigh_length": 1.0,
     "shin_length": 1.0,
     "overall_scale": 1.0,
-    "height": 1.0
+    "height": 1.0,
+    "sym_x_0": -99.06,
+    "sym_y_1": 461.29,
+    "sym_z_2": 10.96,
+    "sym_x_3": 58.48000000000002,
+    "sym_y_4": 353.57,
+    "sym_z_5": 10.96,
+    "sym_x_6": -182.66000000000003,
+    "sym_x_7": 44.90999999999997
   }
 }

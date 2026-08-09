@@ -112,6 +112,10 @@ class ApiService:
     def preset_delete(self, preset_id: str) -> str:
         return self.presets.delete(preset_id)
 
+    def preset_bake(self, preset_id: str) -> dict:
+        """重新烘焙预设：基于物种参数重新生成独立数据（脱离物种）。"""
+        return self.presets.bake(preset_id)
+
     # ------------------------------------------------------------------
     # 皮肤
     # ------------------------------------------------------------------
@@ -396,9 +400,19 @@ class ApiService:
         skin_id 可选：应用皮肤材质 + 体态（body_scale 网格 x/z 缩放）。
         """
         from .skeleton3d import build_skeleton_3d, skinned_vertices, per_frame_trs
+        preset_obj = None
+        if preset:
+            try:
+                preset_obj = self.presets.get(preset)
+            except Exception:
+                preset_obj = None
         species_id, motion, body, params = self._resolve_motion_source(
             action_id, species=species, preset=preset, body=body, params=params)
-        skel3d = build_skeleton_3d(species_id, body=body, species_root=self.species._root)
+        # 预设已烘焙且未显式传 body → 用固化骨架（脱离物种）；否则实时按 body 生成
+        use_baked = preset is not None and body is None
+        skel3d = self._baked_or_build(preset_obj, species_id, body, use_baked)
+        if use_baked and preset_obj and preset_obj.get("baked"):
+            params = (preset_obj["baked"].get("actions") or {}).get(action_id) or params
         skin = self._load_skin(species_id)
         # 皮肤：材质 + 体态（body_scale 网格 x/z 缩放）
         materials, body_scale = self._apply_skin(skin, skin_id)
@@ -470,6 +484,14 @@ class ApiService:
         weights = json.loads((root / "weights.json").read_text(encoding="utf-8"))
         return {"mesh": mesh, "weights": weights}
 
+    def _baked_or_build(self, preset: dict | None, species_id: str, body: dict | None,
+                        use_baked: bool = False) -> dict:
+        """渲染骨架来源：预设已烘焙 → 用固化骨架（脱离物种）；否则实时按 body 生成。"""
+        if use_baked and preset and preset.get("baked") and preset["baked"].get("skel3d"):
+            return preset["baked"]["skel3d"]
+        from .skeleton3d import build_skeleton_3d
+        return build_skeleton_3d(species_id, body=body, species_root=self.species._root)
+
     def export_glb(self, action_id: str, *, species: str | None = None,
                    preset: str | None = None, skin_id: str | None = None,
                    body: dict | None = None, params: dict | None = None,
@@ -481,9 +503,18 @@ class ApiService:
         """
         from .skeleton3d import build_skeleton_3d
         from .gltf import export_glb as _export_glb
+        preset_obj = None
+        if preset:
+            try:
+                preset_obj = self.presets.get(preset)
+            except Exception:
+                preset_obj = None
         species_id, motion, body, params = self._resolve_motion_source(
             action_id, species=species, preset=preset, body=body, params=params)
-        skel3d = build_skeleton_3d(species_id, body=body, species_root=self.species._root)
+        use_baked = preset is not None and body is None
+        skel3d = self._baked_or_build(preset_obj, species_id, body, use_baked)
+        if use_baked and preset_obj and preset_obj.get("baked"):
+            params = (preset_obj["baked"].get("actions") or {}).get(action_id) or params
         skin = self._load_skin(species_id)
         materials, body_scale = self._apply_skin(skin, skin_id)
         parts = self._parts_glb(skin_id) if skin_id else []
@@ -616,6 +647,7 @@ class ApiService:
         """
         from .skeleton3d import build_skeleton_3d, pose_3d, render_pose, _fit_distance
         from PIL import Image
+        preset_obj = None
         if preset_ref == "live":
             if not species:
                 raise ValueError("live preset requires species")
@@ -623,11 +655,14 @@ class ApiService:
             b = body or {}
             ac = actions or {}
         else:
-            preset = self.presets.get(preset_ref)
-            species_id = preset.get("species", "")
-            b = preset.get("body") or {}
-            ac = preset.get("actions") or {}
-        skel3d = build_skeleton_3d(species_id, body=b, species_root=self.species._root)
+            preset_obj = self.presets.get(preset_ref)
+            species_id = preset_obj.get("species", "")
+            b = preset_obj.get("body") or {}
+            ac = preset_obj.get("actions") or {}
+        use_baked = preset_ref != "live" and preset_obj and bool(preset_obj.get("baked"))
+        skel3d = self._baked_or_build(preset_obj, species_id, b, use_baked)
+        if use_baked and preset_obj.get("baked"):
+            ac = preset_obj["baked"].get("actions") or ac
         center = tuple(skel3d.get("center", (480.0, 300.0, 0.0)))
         hr = float(skel3d.get("head_radius", 22.0))
         ground_y = max(v[1] for v in skel3d["joints"].values())

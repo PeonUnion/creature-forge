@@ -439,6 +439,8 @@ def cmd_preset(args) -> None:
         print("updated:", svc.preset_update(args.id, _load_json_arg(args)))
     elif args.sub == "delete":
         print("deleted:", svc.preset_delete(args.id))
+    elif args.sub == "bake":
+        _json(svc.preset_bake(args.id))
 
 
 def cmd_skin(args) -> None:
@@ -598,6 +600,7 @@ def build_parser() -> argparse.ArgumentParser:
     p1 = psp.add_parser("create"); p1.add_argument("--json"); p1.add_argument("--file")
     p1 = psp.add_parser("update"); p1.add_argument("id"); p1.add_argument("--json"); p1.add_argument("--file")
     p1 = psp.add_parser("delete"); p1.add_argument("id")
+    p1 = psp.add_parser("bake", help="重新烘焙：基于物种参数重新生成独立数据（脱离物种）"); p1.add_argument("id")
 
     # skin
     sp_ = sub.add_parser("skin", help="皮肤管理（独立入口，基于物种，可多实例）")
