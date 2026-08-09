@@ -372,11 +372,11 @@ async function renderLive() {
   try {
     const body = encodeURIComponent(JSON.stringify(c.body || {}))
     if (previewAction.value) {
+      // 切换动作直接播新动作帧（不加 transition_from 过渡段，避免循环播放时
+      // 动画开头/结尾重复出现旧动作形态）
       const params = encodeURIComponent(JSON.stringify((c.actions || {})[previewAction.value] || {}))
-      const switching = lastPreviewAction.value && lastPreviewAction.value !== previewAction.value
-      const trans = switching ? `&transition_from=${encodeURIComponent(lastPreviewAction.value)}` : ''
       const r = await api.motion3dData(previewAction.value,
-        `species=${encodeURIComponent(c.species)}&body=${body}&params=${params}${trans}`)
+        `species=${encodeURIComponent(c.species)}&body=${body}&params=${params}`)
       if (r.ok && r.frames) previewData.value = r
       else previewData.value = null
       lastPreviewAction.value = previewAction.value
