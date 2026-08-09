@@ -49,14 +49,13 @@ test.describe('物种管理（全量 E2E）', () => {
     await page.locator('.el-table .el-table__row', { hasText: 'walk3d' })
       .getByRole('button', { name: '编辑' }).click()
     await expect(page.locator('.crumb-now', { hasText: 'walk3d' })).toBeVisible({ timeout: 20_000 })
-    // 预览 tab → 渲染
-    await page.locator('.el-tabs__item', { hasText: '动作预览' }).click()
-    await page.locator('.preview-controls button', { hasText: '渲染' }).click()
-    await expect(page.locator('.sk3d:visible canvas')).toBeVisible({ timeout: 40_000 })
-    await expect(page.locator('.sk3d-badge', { hasText: '16' })).toBeVisible()
+    // 动作预览为常驻右栏，直接点渲染（无需切 tab）
+    await page.locator('.act-preview .preview-controls button', { hasText: '渲染' }).click()
+    await expect(page.locator('.act-preview .sk3d:visible canvas')).toBeVisible({ timeout: 40_000 })
+    await expect(page.locator('.act-preview .sk3d-badge', { hasText: '16' })).toBeVisible()
     // GIF 导出（浏览器下载）
     const dl = page.waitForEvent('download', { timeout: 60_000 })
-    await page.locator('.preview-controls button', { hasText: '导出 GIF' }).click()
+    await page.locator('.act-preview .preview-controls button', { hasText: '导出 GIF' }).click()
     const download = await dl
     expect(download.suggestedFilename()).toMatch(/\.gif$/)
   })
@@ -66,20 +65,20 @@ test.describe('物种管理（全量 E2E）', () => {
     await row.getByRole('button', { name: '动作' }).click()
     await page.locator('.el-table .el-table__row', { hasText: 'walk3d' })
       .getByRole('button', { name: '编辑' }).click()
-    await page.locator('.el-tabs__item', { hasText: '动作预览' }).click()
-    await page.locator('.preview-controls button', { hasText: '渲染' }).click()
-    await expect(page.locator('.sk3d:visible canvas')).toBeVisible({ timeout: 40_000 })
+    // 动作预览为常驻右栏，直接点渲染
+    await page.locator('.act-preview .preview-controls button', { hasText: '渲染' }).click()
+    await expect(page.locator('.act-preview .sk3d:visible canvas')).toBeVisible({ timeout: 40_000 })
     // 初始：正面高亮（openAction 默认 yaw=0）
-    await expect(page.locator('button', { hasText: '正面' })).toHaveClass(/primary/)
+    await expect(page.locator('.act-preview button', { hasText: '正面' })).toHaveClass(/primary/)
     // 拖拽 → TrackballControls 转动 → 相机角度变化
-    const stage = page.locator('.sk3d:visible').first()
+    const stage = page.locator('.act-preview .sk3d:visible').first()
     await stage.scrollIntoViewIfNeeded()
     const box = await stage.boundingBox()
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.down()
     await page.mouse.move(box.x + box.width / 2 + 70, box.y + box.height / 2 + 20, { steps: 8 })
     await page.mouse.up()
-    await expect(page.locator('button', { hasText: '正面' })).not.toHaveClass(/primary/, { timeout: 5_000 })
+    await expect(page.locator('.act-preview button', { hasText: '正面' })).not.toHaveClass(/primary/, { timeout: 5_000 })
   })
 
   test('物种 CRUD：新建向导（从 0）→ 列表 → 删除', async ({ page }) => {

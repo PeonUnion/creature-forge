@@ -60,9 +60,11 @@
         <div class="stat-card"><div class="stat-val">{{ speciesId }}</div><div class="stat-label">所属物种</div></div>
       </div>
 
-      <el-tabs v-model="atab">
-        <!-- 普通：语义化编辑（基本信息 + 参数），非 JSON -->
-        <el-tab-pane label="🧩 普通（语义化）" name="def">
+      <div class="wiz-layout">
+        <div class="wiz-edit">
+          <el-tabs v-model="atab">
+            <!-- 基本信息：元数据 + 参数定义（语义化表单），数据编辑方式之一 -->
+            <el-tab-pane label="🧩 基本信息" name="def">
           <el-form label-position="top" class="form-grid">
             <el-form-item label="动作 ID"><el-input v-model="actionEditor.motion_id" placeholder="如 fly3d" /></el-form-item>
             <el-form-item label="名称"><el-input v-model="actionEditor.title" placeholder="如 飞行" /></el-form-item>
@@ -128,9 +130,13 @@
             </div>
           </div>
           <div v-else class="empty-inline">该动作没有 fk3d.rotations3d 关键帧；可在高级 JSON 中定义后「应用 JSON」再逐帧编辑。</div>
-        </el-tab-pane>
+          </el-tab-pane>
+          </el-tabs>
+        </div><!-- /wiz-edit -->
 
-        <el-tab-pane label="👁 动作预览" name="preview">
+        <!-- 动作预览：独立于编辑 tab 之外的常驻区域（查看效果，非编辑方式） -->
+        <div class="act-preview">
+          <div class="preview-head">👁 动作预览</div>
           <div class="preview-controls">
             <CameraControls v-model="cam" compact />
             <el-button size="small" type="primary" @click="renderAction" :loading="motionRenderLoading" icon="Refresh">渲染</el-button>
@@ -142,8 +148,8 @@
             :fps="motionData.fps"
             @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
           <div class="preview-empty" v-else><p>点击「渲染」加载 3D 动作预览（左键拖拽=转动手办 · 右键平移 · 滚轮缩放）</p></div>
-        </el-tab-pane>
-      </el-tabs>
+        </div>
+      </div><!-- /wiz-layout -->
     </div>
   </div>
 </template>
@@ -178,7 +184,6 @@ const motionViewer = ref(null)
 const gifLoading = ref(false)
 const motionRenderLoading = ref(false)
 const cam = ref({ yaw: 30, pitch: 12, dist: 1, panX: 0, panY: 0 })
-let lastMotionId = ''
 
 // 普通/高级 共享 actionEditor；切页签同步 JSON
 watch(atab, (m) => {
@@ -349,12 +354,10 @@ async function renderAction() {
   if (!actionEditor.value?.motion_id) { ElMessage.warning('请先填写 motion_id 并保存'); return }
   motionRenderLoading.value = true
   try {
-    const switching = lastMotionId && lastMotionId !== actionEditor.value.motion_id
-    const trans = switching ? `&transition_from=${encodeURIComponent(lastMotionId)}` : ''
-    const r = await api.motion3dData(actionEditor.value.motion_id, `species=${encodeURIComponent(props.speciesId)}${trans}`)
+    // 直接播放该动作帧（不加 transition_from，避免切换动作时开头出现旧动作形态）
+    const r = await api.motion3dData(actionEditor.value.motion_id, `species=${encodeURIComponent(props.speciesId)}`)
     if (r.ok && r.frames) motionData.value = r
     else { motionData.value = null; ElMessage.error('动作数据获取失败') }
-    lastMotionId = actionEditor.value.motion_id
   } catch (e) { ElMessage.error(e.message) }
   motionRenderLoading.value = false
 }
@@ -410,6 +413,14 @@ onBeforeUnmount(() => {
 .stat-label { font-size: .72rem; color: #909399; margin-top: 2px; }
 .preview-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .preview-empty { border: 1px dashed #d9d9d9; border-radius: 8px; min-height: 260px; display: flex; align-items: center; justify-content: center; color: #c0c4cc; }
+/* 编辑 + 常驻预览两栏：左=编辑方式 tab（基本信息/高级 JSON/逐帧编辑），右=动作预览 */
+.wiz-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.wiz-edit { min-width: 0; }
+.wiz-edit .el-tabs__content { padding-top: 8px; }
+.act-preview { border: 1px solid #111827; border-radius: 8px; overflow: hidden; background: #fff; min-height: 420px; position: sticky; top: 8px; }
+.act-preview .preview-head { padding: 6px 10px; font-size: .78rem; font-weight: 600; color: #606266; background: #f7f9fc; border-bottom: 1px solid #ebeef5; }
+.act-preview .preview-controls { margin: 8px 10px; }
+.act-preview .skel-preview { min-height: 360px; }
 .cell-main { display: flex; align-items: center; gap: 8px; }
 .cell-title { font-weight: 600; font-size: .85rem; }
 .cell-id { color: #909399; font-size: .72rem; font-family: monospace; }
