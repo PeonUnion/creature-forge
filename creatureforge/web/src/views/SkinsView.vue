@@ -162,6 +162,8 @@
             :mesh="previewData.mesh" :frames="previewData.frames" :fps="previewData.fps"
             :center="previewData.center" :material="current.materials"
             :bind-joints="previewData.bindJoints" :parts="previewData.parts"
+            :part-bone-frames="previewData.part_bone_frames"
+            :part-skin-frames="previewData.part_skin_frames"
             @view="cam = { ...cam, yaw: $event.yaw, pitch: $event.pitch }" />
           <div v-else class="preview-empty"><p>{{ rendering ? '渲染中…' : '选择动作加载蒙皮预览（应用当前皮肤参数）' }}</p></div>
         </el-tab-pane>

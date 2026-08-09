@@ -181,16 +181,17 @@ type PresetSummary struct {
 
 // SkinPart is a game-style skin part attached to a bone or skinned via LBS.
 type SkinPart struct {
-	PartID    string               `json:"part_id"`
-	Title     string               `json:"title"`
-	Kind      string               `json:"kind"` // bone | skinned
-	Bone      string               `json:"bone"`
-	Transform map[string][]float64 `json:"transform"` // position/rotation/scale
-	MeshFile  *string              `json:"mesh_file,omitempty"`
-	Mesh      map[string]any       `json:"mesh,omitempty"`
-	Textures  map[string]string    `json:"textures"`
-	Materials map[string]any       `json:"materials"`
-	Weights   map[string]any       `json:"weights,omitempty"`
+	PartID      string               `json:"part_id"`
+	Title       string               `json:"title"`
+	Kind        string               `json:"kind"` // bone | skinned
+	Bone        string               `json:"bone"`
+	Transform   map[string][]float64 `json:"transform"` // position/rotation/scale
+	MeshFile    *string              `json:"mesh_file,omitempty"`
+	WeightsFile *string              `json:"weights_file,omitempty"`
+	Mesh        map[string]any       `json:"mesh,omitempty"`
+	Textures    map[string]string    `json:"textures"`
+	Materials   map[string]any       `json:"materials"`
+	Weights     map[string]any       `json:"weights,omitempty"`
 }
 
 // Skin is a preset appearance instance: base params + parts collection.

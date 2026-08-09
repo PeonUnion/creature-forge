@@ -1,0 +1,81 @@
+{
+  "schema": "creatureforge_skin_v1",
+  "skin_id": "sk_warrior_male",
+  "title": "布甲剑士（白人）",
+  "description": "白人男性布甲战士：亚麻布甲（skinned 贴合躯干）+ 双手剑（bone 跟随右手），基于 model_male 预设",
+  "preset": "model_male",
+  "species": "human",
+  "materials": {
+    "albedo": "#e8c9ae",
+    "metallic": 0,
+    "roughness": 0.6
+  },
+  "params": {
+    "fat": 0.3,
+    "muscle": 0.5,
+    "skin_tone": 0.1
+  },
+  "parts": [
+    {
+      "part_id": "p_greatsword",
+      "title": "双手剑",
+      "kind": "bone",
+      "bone": "palm_right",
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "mesh_file": "p_greatsword/mesh.json",
+      "textures": {},
+      "materials": {
+        "albedo": "#c8ccd4",
+        "metallic": 0.9,
+        "roughness": 0.3
+      }
+    },
+    {
+      "part_id": "p_cloth_armor",
+      "title": "亚麻布甲",
+      "kind": "skinned",
+      "bone": "pelvis",
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "mesh_file": "p_cloth_armor/mesh.json",
+      "weights_file": "p_cloth_armor/weights.json",
+      "textures": {},
+      "materials": {
+        "albedo": "#6b5a45",
+        "metallic": 0,
+        "roughness": 0.9
+      }
+    }
+  ]
+}

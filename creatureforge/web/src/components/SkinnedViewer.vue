@@ -30,7 +30,9 @@ const props = defineProps({
   material: { type: Object, default: () => ({}) },     // 皮肤材质覆盖 {albedo, roughness, metallic}（默认用 mesh.materials）
   bodyScale: { type: Number, default: 1 },             // 胖瘦缩放（>1 增宽 / <1 收窄，只缩放 x/z 保持身高）
   bindJoints: { type: Object, default: () => ({}) },   // 骨架骨骼世界位置（Y-down，{bone:[x,y,z]}）
-  parts: { type: Array, default: () => [] },           // 皮肤部件（bone 装饰件：跟随绑定骨骼 + transform + mesh + 材质/贴图）
+  parts: { type: Array, default: () => [] },           // 皮肤部件（bone 装饰件 / skinned 蒙皮件 + mesh + 材质）
+  partBoneFrames: { type: Object, default: () => ({}) }, // bone 件每帧绑定骨位置 {part_id: [[x,y,z],...]}
+  partSkinFrames: { type: Object, default: () => ({}) }, // skinned 件每帧变形顶点 {part_id: [[x,y,z,...],...]}
 })
 const emit = defineEmits(['ready', 'view'])
 
@@ -39,7 +41,8 @@ const mountEl = ref(null)
 let renderer, scene, camera, controls, skinMesh = null, grid = null
 let posAttr = null, fitTarget = new THREE.Vector3(), fitDist = 300
 let rafId = null, resizeObs = null, animTimer = null
-let partMeshes = []   // 皮肤部件网格（bone 装饰件）
+// 部件网格元数据：{mesh, kind:'bone'|'skinned', bone, transform, posAttr}
+let partMeshes = []
 const playing = ref(false)
 const frameIndex = ref(0)
 
@@ -127,20 +130,22 @@ function buildSkin() {
   buildParts()  // 皮肤部件（bone 装饰件：跟随绑定骨骼）
 }
 
-/** 皮肤部件：bone 装饰件 — mesh 摆放到绑定骨骼位置 + 相对变换（材质 + 贴图）。 */
+/** 皮肤部件：
+ *  - bone 件：mesh 摆放到绑定骨骼位置 + 相对变换（每帧位置跟随绑定骨）
+ *  - skinned 件：mesh 顶点自带世界坐标（LBS 后端算好），每帧更新顶点贴合骨架变形
+ */
 function buildParts() {
   clearParts()
   if (!scene) return
   const bp = props.bindJoints || {}
   for (const p of props.parts || []) {
-    const bpos = bp[p.bone]
-    if (!bpos) continue
     const m = p.mesh || {}
     if (!m.vertices || !m.vertices.length) continue
     const geo = new THREE.BufferGeometry()
     const pos = new Float32Array(m.vertices)
     for (let k = 1; k < pos.length; k += 3) pos[k] = -pos[k]  // Y-down → Y-up
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    const posAttrP = new THREE.BufferAttribute(pos, 3)
+    geo.setAttribute('position', posAttrP)
     if (m.normals && m.normals.length) {
       const nm = new Float32Array(m.normals)
       for (let k = 1; k < nm.length; k += 3) nm[k] = -nm[k]
@@ -160,27 +165,38 @@ function buildParts() {
     })
     const mesh = new THREE.Mesh(geo, mat)
     mesh.frustumCulled = false
-    // 变换：骨骼绑定位置（Y-up）+ 相对骨骼偏移；rotation 用 F·R·F⁻¹ 镜像（Y-down → Y-up，与后端导出一致）
-    const tr = p.transform || {}
-    const pos3 = tr.position || [0, 0, 0]
-    const rot = tr.rotation || [0, 0, 0]
-    const scl = tr.scale || [1, 1, 1]
-    mesh.position.set(bpos[0] + pos3[0], -bpos[1] - pos3[1], bpos[2] + pos3[2])
-    const e = new THREE.Euler(rot[0], rot[1], rot[2], 'XYZ')
-    const F = new THREE.Matrix4().makeScale(1, -1, 1)
-    const mtx = new THREE.Matrix4().makeRotationFromEuler(e)
-    mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().multiplyMatrices(F, mtx).multiply(F))
-    mesh.scale.set(scl[0], scl[1], scl[2])
+    const meta = { mesh, kind: p.kind === 'skinned' ? 'skinned' : 'bone', posAttr: posAttrP, partId: p.part_id }
+    if (meta.kind === 'bone') {
+      // bone 件：摆到绑定姿态骨骼位置 + 相对变换
+      const bpos = bp[p.bone]
+      if (bpos) meta.bone = p.bone
+      meta.transform = p.transform || {}
+      applyBonePartPose(meta, bp[p.bone] || [0, 0, 0], p.transform || {})
+    }
     scene.add(mesh)
-    partMeshes.push(mesh)
+    partMeshes.push(meta)
   }
 }
 
+// bone 件摆放：绑定骨世界位置（Y-up）+ 相对偏移；rotation 用 F·R·F⁻¹ 镜像（Y-down → Y-up）
+function applyBonePartPose(meta, bonePos, transform) {
+  const tr = transform || {}
+  const pos3 = tr.position || [0, 0, 0]
+  const rot = tr.rotation || [0, 0, 0]
+  const scl = tr.scale || [1, 1, 1]
+  meta.mesh.position.set(bonePos[0] + pos3[0], -bonePos[1] - pos3[1], bonePos[2] + pos3[2])
+  const e = new THREE.Euler(rot[0], rot[1], rot[2], 'XYZ')
+  const F = new THREE.Matrix4().makeScale(1, -1, 1)
+  const mtx = new THREE.Matrix4().makeRotationFromEuler(e)
+  meta.mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().multiplyMatrices(F, mtx).multiply(F))
+  meta.mesh.scale.set(scl[0], scl[1], scl[2])
+}
+
 function clearParts() {
-  for (const ms of partMeshes) {
-    if (scene) scene.remove(ms)
-    if (ms.geometry) ms.geometry.dispose()
-    if (ms.material) ms.material.dispose()
+  for (const pm of partMeshes) {
+    if (scene) scene.remove(pm.mesh)
+    if (pm.mesh.geometry) pm.mesh.geometry.dispose()
+    if (pm.mesh.material) pm.mesh.material.dispose()
   }
   partMeshes = []
 }
@@ -199,6 +215,28 @@ function updateFrame(i) {
   }
   posAttr.needsUpdate = true
   if (skinMesh) skinMesh.geometry.computeVertexNormals()
+  // 部件跟随动作：bone 件位置跟随绑定骨；skinned 件顶点跟随 LBS 变形
+  const bf = props.partBoneFrames || {}
+  const sf = props.partSkinFrames || {}
+  for (const pm of partMeshes) {
+    if (pm.kind === 'bone' && pm.bone) {
+      const fr = bf[pm.partId]
+      if (fr && fr[i]) applyBonePartPose(pm, fr[i], pm.transform)
+    } else if (pm.kind === 'skinned') {
+      const fr = sf[pm.partId]
+      if (fr && fr[i]) {
+        const pa = pm.posAttr.array
+        const v = fr[i]
+        for (let k = 0; k < v.length; k += 3) {
+          pa[k] = v[k]
+          pa[k + 1] = -v[k + 1]
+          pa[k + 2] = v[k + 2]
+        }
+        pm.posAttr.needsUpdate = true
+        pm.mesh.geometry.computeVertexNormals()
+      }
+    }
+  }
   renderer.render(scene, camera)
 }
 

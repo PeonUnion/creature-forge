@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 
@@ -471,10 +472,63 @@ func (s *Server) skin3dData(actionID, species, presetID, skinID string, body, pa
 		n = 8
 	}
 	params = s.resolveActionParams(motion, params)
+
+	// 皮肤部件：先加载资产（mesh/weights），帧循环内计算跟随数据
+	//   bone 件   → part_bone_frames[part_id] = 每帧绑定骨世界位置（位置跟随）
+	//   skinned 件 → part_skin_frames[part_id] = 每帧 LBS 变形顶点（贴合 + 随骨架变形）
+	parts := []any{}
+	partBoneFrames := map[string][][]float64{}
+	partSkinFrames := map[string][][]float64{}
+	partEngMesh := map[string]*skeleton.Mesh{}
+	partEngWeight := map[string]*skeleton.Weights{}
+	partBone := map[string]string{}
+	if skinID != "" {
+		if skd, err := s.Store.GetSkin(skinID); err == nil {
+			for _, p := range skd.Parts {
+				if p.MeshFile != nil {
+					if m, err := s.loadPartAsset(skinID, *p.MeshFile); err == nil {
+						p.Mesh = m
+					}
+				}
+				if p.Kind == "skinned" {
+					if p.WeightsFile != nil {
+						if w, err := s.loadPartAsset(skinID, *p.WeightsFile); err == nil {
+							p.Weights = w
+						}
+					}
+					if p.Mesh != nil && p.Weights != nil {
+						if pm, err1 := mapToEngineMesh(p.Mesh); err1 == nil {
+							if pw, err2 := mapToEngineWeights(p.Weights); err2 == nil {
+								partEngMesh[p.PartID] = pm
+								partEngWeight[p.PartID] = pw
+							}
+						}
+					}
+				} else if p.Bone != "" {
+					partBone[p.PartID] = p.Bone
+				}
+				parts = append(parts, p)
+			}
+		}
+	}
+
 	frames := make([][]float64, 0, n)
 	for i := 0; i < n; i++ {
 		posMap, rMap := skeleton.FKWorldPose(sk, eng, i, params)
 		frames = append(frames, skeleton.SkinnedVertices(posMap, rMap, sk, mesh, weights, 0))
+		// skinned 部件：每帧 LBS 变形
+		for pid, pm := range partEngMesh {
+			partSkinFrames[pid] = append(partSkinFrames[pid],
+				skeleton.SkinnedVertices(posMap, rMap, sk, pm, partEngWeight[pid], 0))
+		}
+		// bone 部件：每帧绑定骨世界位置
+		for pid, bone := range partBone {
+			if bpos, ok := posMap[bone]; ok {
+				partBoneFrames[pid] = append(partBoneFrames[pid], vec3(bpos))
+			} else {
+				partBoneFrames[pid] = append(partBoneFrames[pid], nil)
+			}
+		}
 	}
 	bindJoints := map[string][]float64{}
 	for k, v := range sk.Joints {
@@ -488,14 +542,6 @@ func (s *Server) skin3dData(actionID, species, presetID, skinID string, body, pa
 			fkTree[k] = *v
 		}
 	}
-	parts := []any{}
-	if skinID != "" {
-		if skd, err := s.Store.GetSkin(skinID); err == nil {
-			for _, p := range skd.Parts {
-				parts = append(parts, p)
-			}
-		}
-	}
 	fps := motion.Fps
 	if fps <= 0 {
 		fps = 6
@@ -507,16 +553,56 @@ func (s *Server) skin3dData(actionID, species, presetID, skinID string, body, pa
 			"vertex_count": mesh.VertexCount, "vertices": mesh.Vertices,
 			"materials": map[string]any{},
 		},
-		"boneNames":   weights.BoneNames,
-		"weights":     weights.PerVertex,
-		"bindJoints":  bindJoints,
-		"fk_tree":     fkTree,
-		"bones":       bones2d(sk.Bones),
-		"frames":      frames,
-		"trs":         map[string]any{},
-		"frame_count": n,
-		"fps":         fps,
-		"center":      vec3(sk.Center),
-		"parts":       parts,
+		"boneNames":        weights.BoneNames,
+		"weights":          weights.PerVertex,
+		"bindJoints":       bindJoints,
+		"fk_tree":          fkTree,
+		"bones":            bones2d(sk.Bones),
+		"frames":           frames,
+		"trs":              map[string]any{},
+		"frame_count":      n,
+		"fps":              fps,
+		"center":           vec3(sk.Center),
+		"parts":            parts,
+		"part_bone_frames": partBoneFrames,
+		"part_skin_frames": partSkinFrames,
 	}, nil
+}
+
+// loadPartAsset reads a skin part asset (mesh/weights JSON) from
+// data/skins/assets/<skin_id>/<ref>.
+func (s *Server) loadPartAsset(skinID, ref string) (map[string]any, error) {
+	b, err := os.ReadFile(filepath.Join(s.Store.SkinsDir(), "assets", skinID, filepath.Clean(ref)))
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func mapToEngineMesh(m map[string]any) (*skeleton.Mesh, error) {
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+	var mesh skeleton.Mesh
+	if err := json.Unmarshal(b, &mesh); err != nil {
+		return nil, err
+	}
+	return &mesh, nil
+}
+
+func mapToEngineWeights(w map[string]any) (*skeleton.Weights, error) {
+	b, err := json.Marshal(w)
+	if err != nil {
+		return nil, err
+	}
+	var wg skeleton.Weights
+	if err := json.Unmarshal(b, &wg); err != nil {
+		return nil, err
+	}
+	return &wg, nil
 }
