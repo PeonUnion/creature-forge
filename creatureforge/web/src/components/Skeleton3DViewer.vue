@@ -33,7 +33,7 @@ const props = defineProps({
   fps: { type: Number, default: 6 },
   highlight: { type: String, default: '' },      // 高亮关节（含其后代子树），''=无
   editable: { type: Boolean, default: false },   // 编辑模式：可按住关节/空白拖拽编辑
-  dragPlane: { type: String, default: 'xz' },    // 编辑平面锁定：'xz'=水平(y不变) / 'yz'=侧视(x不变)
+  dragPlane: { type: String, default: 'front' }, // 编辑视图：front/back=正/背面(锁z, XY面) / left/right=左右侧视(锁x, YZ面)
   gridStep: { type: Number, default: 0 },        // 网格吸附步长：>0 显示编辑网格并吸附交叉点，0=自由
 })
 const emit = defineEmits(['ready', 'view', 'pick', 'dragend'])
@@ -145,9 +145,12 @@ function init() {
     )
     const raycaster = new THREE.Raycaster()
     raycaster.setFromCamera(ndc, camera)
-    const lockNormal = props.dragPlane === 'yz'
-      ? new THREE.Vector3(1, 0, 0)   // yz：法线 x 轴，x 保持不变
-      : new THREE.Vector3(0, 1, 0)   // xz：法线 y 轴，y 保持不变
+    const view = props.dragPlane
+    const lockX = view === 'left' || view === 'right'   // 左右侧视：锁 x，自由轴 y/z
+    const lockZ = view === 'front' || view === 'back'   // 正/背面：锁 z，自由轴 x/y
+    const lockNormal = lockX ? new THREE.Vector3(1, 0, 0)
+      : lockZ ? new THREE.Vector3(0, 0, 1)
+      : new THREE.Vector3(0, 1, 0)                      // 兜底：水平面锁 y
     const pt = new THREE.Vector3()
     const got = raycaster.ray.intersectPlane(
       new THREE.Plane().setFromNormalAndCoplanarPoint(lockNormal, dragBaseWorld), pt)
@@ -160,11 +163,9 @@ function init() {
     // 网格吸附：自由轴取整到 gridStep 倍数，锁定轴保持不变（落点仅落网格交叉点）
     if (props.gridStep > 0) {
       const s = props.gridStep
-      if (props.dragPlane === 'yz') {
-        pt.y = Math.round(pt.y / s) * s; pt.z = Math.round(pt.z / s) * s; pt.x = dragBaseWorld.x
-      } else {
-        pt.x = Math.round(pt.x / s) * s; pt.z = Math.round(pt.z / s) * s; pt.y = dragBaseWorld.y
-      }
+      if (lockX) { pt.y = Math.round(pt.y / s) * s; pt.z = Math.round(pt.z / s) * s; pt.x = dragBaseWorld.x }
+      else if (lockZ) { pt.x = Math.round(pt.x / s) * s; pt.y = Math.round(pt.y / s) * s; pt.z = dragBaseWorld.z }
+      else { pt.x = Math.round(pt.x / s) * s; pt.z = Math.round(pt.z / s) * s; pt.y = dragBaseWorld.y }
     }
     if (dragging.name) {
       // 关节：绝对落点（初始局部 + 世界增量），随鼠标精确移动
@@ -374,11 +375,12 @@ function fitCamera() {
   updateEditGrid()
 }
 
-/** 编辑网格（锁定平面上的吸附参考，绿线）；editable && gridStep>0 时显示 */
+/** 编辑网格（视图平面上的吸附参考，绿线）；editable && gridStep>0 时显示 */
 function updateEditGrid() {
   if (editGrid) { scene.remove(editGrid); editGrid = null }
   if (!props.editable || !(props.gridStep > 0)) return
-  const isXz = props.dragPlane !== 'yz'
+  const view = props.dragPlane
+  const isFront = view === 'front' || view === 'back'   // XY 平面（正/背面）
   const size = Math.max(fitDist * 1.6, 80)
   const div = Math.max(4, Math.round(size / props.gridStep / 2) * 2)
   editGrid = new THREE.GridHelper(size, div, 0x34d399, 0x115e59)
@@ -388,7 +390,8 @@ function updateEditGrid() {
     Math.round(fitTarget.y / props.gridStep) * props.gridStep,
     Math.round(fitTarget.z / props.gridStep) * props.gridStep,
   )
-  if (!isXz) editGrid.rotation.y = Math.PI / 2   // 转到 YZ 平面
+  if (isFront) editGrid.rotation.x = Math.PI / 2   // → XY 平面（正面/背面）
+  else editGrid.rotation.y = Math.PI / 2           // → YZ 平面（左右侧视）
   scene.add(editGrid)
 }
 

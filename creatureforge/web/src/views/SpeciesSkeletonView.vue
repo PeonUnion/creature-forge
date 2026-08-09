@@ -29,12 +29,16 @@
               <div class="edit-plane-bar">
                 <span class="plane-label">编辑</span>
                 <el-radio-group v-model="editPlane" size="small">
-                  <el-radio-button value="xz">(X,Z) 俯视·水平面</el-radio-button>
-                  <el-radio-button value="yz">(Y,Z) 侧视·垂直面</el-radio-button>
+                  <el-radio-button value="front">正面</el-radio-button>
+                  <el-radio-button value="back">背面</el-radio-button>
+                  <el-radio-button value="left">左侧视</el-radio-button>
+                  <el-radio-button value="right">右侧视</el-radio-button>
                 </el-radio-group>
                 <el-switch v-model="snapEnabled" size="small" active-text="网格" inactive-text="自由" />
                 <el-input-number v-model="gridStep" size="small" :min="1" :max="100" :disabled="!snapEnabled" style="width: 96px" />
                 <span class="plane-legend">x 左右 · y 上下(高度) · z 前后(纵深)</span>
+                <el-button size="small" text :disabled="!undoStack.length" @click="doUndo" title="撤销 (Ctrl+Z)">↶ 撤销</el-button>
+                <el-button size="small" text :disabled="!redoStack.length" @click="doRedo" title="重做 (Ctrl+Y)">↷ 重做</el-button>
                 <span class="plane-hint">落点吸附网格交叉点</span>
               </div>
               <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
@@ -328,8 +332,43 @@ function subtreeOf(name) {
   }
   return out
 }
+
+// -- 撤销 / 重做（本地姿态编辑，Ctrl+Z / Ctrl+Y；栈存 positions_3d 快照） --
+const undoStack = ref([])
+const redoStack = ref([])
+const MAX_UNDO = 50
+function posSnapshot() {
+  const p = wiz.value?.positions_3d || {}
+  return JSON.parse(JSON.stringify(p))
+}
+function pushUndo() {
+  if (!wiz.value) return
+  undoStack.value.push(posSnapshot())
+  if (undoStack.value.length > MAX_UNDO) undoStack.value.shift()
+  redoStack.value = []
+}
+function restorePos(snap) {
+  if (!wiz.value) return
+  wiz.value.positions_3d = snap
+  dirty.value = true
+  if (selJoint.value && snap[selJoint.value]) {
+    const [x, y, z] = snap[selJoint.value]; xf.value.pos = { x, y, z }
+  }
+}
+function doUndo() {
+  if (!undoStack.value.length) { ElMessage.info('没有可撤销的操作'); return }
+  redoStack.value.push(posSnapshot())
+  restorePos(undoStack.value.pop())
+}
+function doRedo() {
+  if (!redoStack.value.length) { ElMessage.info('没有可重做的操作'); return }
+  undoStack.value.push(posSnapshot())
+  restorePos(redoStack.value.pop())
+}
+
 function localRotate(axis, angle, joint) {
   if (!wiz.value) return
+  pushUndo()
   const p = wiz.value.positions_3d ||= {}
   const names = joint ? subtreeOf(joint) : Object.keys(p)
   const pts = joint && p[joint] ? [p[joint]] : Object.values(p).filter(Boolean)
@@ -352,6 +391,7 @@ function localRotate(axis, angle, joint) {
 }
 function localTranslate(dx, dy, dz, joint) {
   if (!wiz.value) return
+  pushUndo()
   const p = wiz.value.positions_3d ||= {}
   const names = joint ? subtreeOf(joint) : Object.keys(p)
   for (const n of names) if (p[n]) p[n] = [r2(p[n][0] + dx), r2(p[n][1] + dy), r2(p[n][2] + dz)]
@@ -372,6 +412,7 @@ watch(selJoint, (name) => {
 function clearSel() { selJoint.value = ''; hoverJoint.value = '' }
 function applyPos() {
   if (!selJoint.value || !wiz.value) return
+  pushUndo()
   const { x, y, z } = xf.value.pos
   wiz.value.positions_3d ||= {}
   wiz.value.positions_3d[selJoint.value] = [r2(x), r2(y), r2(z)]
@@ -385,6 +426,7 @@ function applyTranslate() {
 }
 function onDragEnd({ name, dx, dy, dz }) {
   if (!wiz.value) return
+  pushUndo()
   const p = wiz.value.positions_3d ||= {}
   if (name) {
     if (p[name]) p[name] = [r2(p[name][0] + dx), r2(p[name][1] + dy), r2(p[name][2] + dz)]
@@ -396,32 +438,43 @@ function onDragEnd({ name, dx, dy, dz }) {
   }
   dirty.value = true
 }
-// 编辑平面与网格吸附
-const editPlane = ref('xz')      // xz=水平 / yz=侧视
+// 编辑视图与网格吸附
+const editPlane = ref('front')    // front/back=正/背面(锁z) / left/right=左右侧视(锁x)
 const snapEnabled = ref(true)    // 网格吸附开关
 const gridStep = ref(5)          // 网格精度（落点吸附步长）
 const skeletonViewerApi = ref(null)
 const poseViewerApi = ref(null)
-// 切换编辑平面 → 相机对齐为 2D 视角（xz=俯视 / yz=侧视）
+// 编辑视图 → 相机对齐为对应 2D 正交视角（正面/背面/左侧视/右侧视）
+const PLANE_VIEW = {
+  front: { yaw: 0, pitch: 0 }, back: { yaw: 180, pitch: 0 },
+  left: { yaw: 270, pitch: 0 }, right: { yaw: 90, pitch: 0 },
+}
 watch(editPlane, (pl) => {
-  const cfg = pl === 'yz' ? { yaw: 90, pitch: 0 } : { yaw: 0, pitch: 90 }
+  const cfg = PLANE_VIEW[pl] || { yaw: 0, pitch: 0 }
   skeletonViewerApi.value?.setView(cfg.yaw, cfg.pitch, 1)
   poseViewerApi.value?.setView(cfg.yaw, cfg.pitch, 1)
 })
 // 方向键微调移动选中关节（按当前编辑平面解释方向，步长=网格精度）
 function onKeyMove(e) {
   if (mode.value !== 'normal' || (sub.value !== 'skeleton' && sub.value !== 'pose')) return
-  if (!selJoint.value) return
   const t = e.target
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+  // 撤销/重做快捷键：Ctrl+Z 撤销、Ctrl+Y / Ctrl+Shift+Z 重做
+  const mod = e.ctrlKey || e.metaKey
+  if (mod && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
+    e.preventDefault()
+    if (e.key.toLowerCase() === 'y' || e.shiftKey) doRedo(); else doUndo()
+    return
+  }
+  if (!selJoint.value) return
   const step = snapEnabled.value ? gridStep.value : 5
-  const pl = editPlane.value
+  const side = editPlane.value === 'left' || editPlane.value === 'right'  // 左右侧视：水平=z；正/背面：水平=x
   let dx = 0, dy = 0, dz = 0
   switch (e.key) {
-    case 'ArrowLeft': pl === 'yz' ? (dz = -step) : (dx = -step); break
-    case 'ArrowRight': pl === 'yz' ? (dz = step) : (dx = step); break
-    case 'ArrowUp': pl === 'yz' ? (dy = -step) : (dz = step); break
-    case 'ArrowDown': pl === 'yz' ? (dy = step) : (dz = -step); break
+    case 'ArrowLeft': side ? (dz = -step) : (dx = -step); break
+    case 'ArrowRight': side ? (dz = step) : (dx = step); break
+    case 'ArrowUp': dy = -step; break   // 屏幕上移 = 高度 y 减小（Y-down）
+    case 'ArrowDown': dy = step; break
     default: return
   }
   e.preventDefault()
@@ -527,6 +580,7 @@ function setPose() {
   const pos = poseStr.value.split(',').map(Number)
   if (pos.length !== 3 || pos.some(isNaN)) { ElMessage.warning('坐标格式：x,y,z'); return }
   if (!wiz.value) return
+  pushUndo()
   wiz.value.positions_3d ||= {}
   wiz.value.positions_3d[poseJoint.value] = [r2(pos[0]), r2(pos[1]), r2(pos[2])]
   dirty.value = true
@@ -557,6 +611,7 @@ async function save() {
     if (dirty.value) await api.wizardPoseApply(props.speciesId, wiz.value?.positions_3d || {})
     await api.wizardCommit(props.speciesId)
     dirty.value = false
+    undoStack.value = []; redoStack.value = []
     ElMessage.success('骨骼已保存')
     emit('saved')
   } catch (e) { ElMessage.error('保存失败: ' + e.message) }
