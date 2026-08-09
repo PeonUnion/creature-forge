@@ -1,7 +1,6 @@
 package server
 
-// 3D data endpoints (mirror of api.py skeleton3d_data / motion3d_data /
-// motion3d_live / skin3d_data + the render-agnostic query parsing).
+// 3D data endpoints (skeleton3d / motion3d / motion3d_live / skin3d_data).
 import (
 	"encoding/json"
 	"errors"
@@ -27,7 +26,7 @@ func (s *Server) routeMotions3dList(w http.ResponseWriter, r *http.Request) {
 	s.json(w, map[string]any{"motions3d": items}, http.StatusOK)
 }
 
-// actionsListAll mirrors SpeciesService.list_actions_all().
+// actionsListAll lists all actions across species.
 func (s *Server) actionsListAll() ([]map[string]any, error) {
 	ids, err := s.Store.ListSpecies()
 	if err != nil {
@@ -64,7 +63,7 @@ func orTitle(s, fallback string) string {
 	return s
 }
 
-// --- camera/query helpers (mirror of _skeleton3d_get parsing) -------------
+// --- camera/query helpers ----------------------------
 
 // camQuery parses the shared camera + grid flags from query params.
 type camQuery struct {
@@ -106,7 +105,7 @@ func qf(s string) float64 {
 }
 
 // bodyFromQuery extracts body params from query (all non-camera float params
-// merged with the optional body JSON), mirror of the Python merge.
+// merged with the optional body JSON).
 func bodyFromQuery(r *http.Request) map[string]float64 {
 	q := r.URL.Query()
 	camKeys := map[string]bool{
@@ -169,7 +168,7 @@ func (s *Server) routeSkeleton3d(w http.ResponseWriter, r *http.Request) {
 	s.json(w, map[string]any{"ok": true, "data_url": url}, http.StatusOK)
 }
 
-// skeleton3dData mirrors api.skeleton3d_data (WebGL-ready joint data).
+// skeleton3dData returns WebGL-ready joint data.
 func (s *Server) skeleton3dData(speciesID string, body map[string]float64) (map[string]any, error) {
 	sk, err := s.buildSpeciesSkeleton(speciesID, body)
 	if err != nil {
@@ -268,7 +267,7 @@ func (s *Server) routeMotion3d(w http.ResponseWriter, r *http.Request) {
 	s.json(w, result, http.StatusOK)
 }
 
-// motion3dData mirrors api.motion3d_data.
+// motion3dData returns per-frame joint data.
 func (s *Server) motion3dData(actionID, species string, body, params map[string]float64, transitionFrames int) (map[string]any, error) {
 	speciesID, motion, err := s.resolveMotion(actionID, species)
 	if err != nil {
@@ -305,8 +304,7 @@ func (s *Server) motion3dData(actionID, species string, body, params map[string]
 	}, nil
 }
 
-// resolveMotion finds a motion by id (optionally scoped to a species),
-// mirror of SpeciesService.find_action / _resolve_motion_source.
+// resolveMotion finds a motion by id (optionally scoped to a species).
 func (s *Server) resolveMotion(actionID, species string) (string, *store.Motion, error) {
 	if species != "" {
 		m, err := s.Store.GetAction(species, actionID)
@@ -347,7 +345,7 @@ func poseVecs(pose map[string][3]float64) map[string][]float64 {
 	return out
 }
 
-// motion3dLive mirrors api.motion3d_live (POST /api/motion3d/live).
+// motion3dLive computes one live frame (POST /api/motion3d/live).
 func (s *Server) motion3dLive(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Action  map[string]any `json:"action"`
@@ -431,7 +429,7 @@ func (s *Server) routeSkin3d(w http.ResponseWriter, r *http.Request) {
 	s.json(w, data, http.StatusOK)
 }
 
-// skin3dData mirrors api.skin3d_data (skinned mesh + per-frame vertices).
+// skin3dData returns the skinned mesh + per-frame vertices.
 func (s *Server) skin3dData(actionID, species, presetID, skinID string, body, params map[string]float64) (map[string]any, error) {
 	// resolve source: preset (body/params) → species
 	speciesID := species

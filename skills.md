@@ -1,10 +1,10 @@
-# CreatureForge — CLI / Server 技能文档（Go 版）
+# CreatureForge — CLI / Server 技能文档
 
-数据驱动角色素材管线（Go 全量重写，无 Python）。数据始终在外部 JSON（`data/`），代码只做引擎处理。
+数据驱动角色素材管线。数据始终在外部 JSON（`data/`），代码只做引擎处理。
 
 ## 二进制
 
-Go 迁移后提供两个二进制（`scripts/build.sh` 构建，产物在 `dist/`）：
+提供两个二进制（`scripts/build.sh` 构建，产物在 `dist/`）：
 
 | 二进制 | 说明 | 前端 |
 |---|---|---|
@@ -47,13 +47,13 @@ chmod +x gocore-server gocore
 
 ## gocore（CLI 计算内核）
 
-Go 迁移中——当前实现计算任务，全命令（species/action/preset/skin/render/upgrade）见 `TODO.md`。
+当前实现计算任务，全命令（species/action/preset/skin/render/upgrade）见 `TODO.md`。
 
 ```bash
 gocore --data-dir data --species human --task build                       # 骨架：joints/bones/fk_tree
 gocore --data-dir data --species human --action walk3d --task pose --frame 0   # 单帧姿态 {joint:[x,y,z]}
 gocore --data-dir data --species human --action walk3d --task lbs --frame 0    # LBS 蒙皮 flat 顶点
-gocore --stdin    # 批量帧（Python bridge 遗留的 stdin JSON 协议，Go 直接消费）
+gocore --stdin    # 批量帧（stdin JSON 协议）
 ```
 
 ## 数据目录

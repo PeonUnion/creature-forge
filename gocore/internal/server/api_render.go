@@ -1,7 +1,7 @@
 package server
 
-// Render endpoints (mirror of api.py render_skeleton3d / render_motion3d /
-// render_preset3d): PNG / GIF / frames / sprite via the render package.
+// Render endpoints (skeleton3d / motion3d / preset3d): PNG / GIF / frames /
+// sprite via the render package.
 import (
 	"errors"
 	"image"
@@ -22,8 +22,7 @@ type camView struct {
 	distAbs float64
 }
 
-// makeCamView computes camera/frame params for rendering a skeleton (mirror of
-// the shared block in api.py render methods).
+// makeCamView computes camera/frame params for rendering a skeleton.
 func makeCamView(sk *skeleton.Skeleton, cam camQuery) camView {
 	v := camView{skel: sk, center: sk.Center, headRad: sk.HeadRadius}
 	for _, j := range sk.Joints {
@@ -44,7 +43,7 @@ func (v camView) frame(pose map[string][3]float64, yaw, pitch, panX, panY float6
 
 // --- skeleton3d render ----------------------------------------------------
 
-// renderSkeleton3d mirrors api.render_skeleton3d.
+// renderSkeleton3d renders a species skeleton PNG.
 func (s *Server) renderSkeleton3d(speciesID string, cam camQuery, body map[string]float64) (string, error) {
 	sk, err := s.buildSpeciesSkeleton(speciesID, body)
 	if err != nil {
@@ -57,7 +56,7 @@ func (s *Server) renderSkeleton3d(speciesID string, cam camQuery, body map[strin
 
 // --- motion3d render ------------------------------------------------------
 
-// renderMotion3d mirrors api.render_motion3d: single frame / frames / gif / sprite.
+// renderMotion3d renders a motion: single frame / frames / gif / sprite.
 func (s *Server) renderMotion3d(actionID, species string, cam camQuery) (map[string]any, error) {
 	speciesID, motion, err := s.resolveMotion(actionID, species)
 	if err != nil {
@@ -121,7 +120,7 @@ func (s *Server) renderMotion3d(actionID, species string, cam camQuery) (map[str
 
 // --- preset3d render ------------------------------------------------------
 
-// renderPreset3d mirrors api.render_preset3d (preset id or "live").
+// renderPreset3d renders a preset (preset id or "live").
 func (s *Server) renderPreset3d(presetRef, species string, body, actions map[string]float64,
 	actionID string, cam camQuery) (map[string]any, error) {
 	var sk *skeleton.Skeleton
@@ -210,7 +209,7 @@ func (s *Server) renderPreset3d(presetRef, species string, body, actions map[str
 }
 
 // bakedToSkeleton converts a baked skel3d snapshot back into an engine
-// Skeleton (mirror of _baked_or_build → preset baked path).
+// Skeleton (from a baked preset snapshot).
 func bakedToSkeleton(b *store.BakedSkel3D) *skeleton.Skeleton {
 	return &skeleton.Skeleton{
 		Joints:     b.Joints,

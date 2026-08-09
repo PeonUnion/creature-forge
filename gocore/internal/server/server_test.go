@@ -1,7 +1,7 @@
 package server
 
 // Integration tests exercise the HTTP API against the real repo data
-// (data/) via httptest — JSON contracts match the Python server.
+// (data/) via httptest.
 import (
 	"bytes"
 	"encoding/json"

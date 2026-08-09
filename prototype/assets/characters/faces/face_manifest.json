@@ -1,5 +1,5 @@
 {
-  "generator": "process_face_variants.py",
+  "generator": "process_face_variants",
   "generator_version": 1,
   "source": "prototype/assets/characters/generated/raw_face_overlay_variants_2x4.png",
   "ear_source": "prototype/assets/characters/generated/raw_ear_overlay_variants_2x4.png",

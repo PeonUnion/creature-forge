@@ -31,7 +31,7 @@ func main() {
 	flag.IntVar(&frame, "frame", 0, "frame index")
 	flag.StringVar(&task, "task", "build", "task: build | pose | lbs")
 	flag.StringVar(&configPath, "config", "", "config.yaml path (optional; viper)")
-	flag.BoolVar(&useStdin, "stdin", false, "read JSON request from stdin (Python bridge, batch frames)")
+	flag.BoolVar(&useStdin, "stdin", false, "read JSON request from stdin (batch frames)")
 	flag.Parse()
 
 	applyConfig(configPath, task, species)
@@ -89,7 +89,7 @@ func main() {
 	}
 }
 
-// Req is the stdin request payload (Python bridge).
+// Req is the stdin request payload.
 type Req struct {
 	Task      string                `json:"task"` // pose | lbs
 	Joints    map[string][3]float64 `json:"joints"`

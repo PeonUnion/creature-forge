@@ -1,7 +1,7 @@
 package render
 
 // Tests render real repo skeleton/motion data and verify decodable, correctly
-// sized PNG/GIF/sprite output (replaces Pillow in the pipeline).
+// sized PNG/GIF/sprite output.
 import (
 	"bytes"
 	"encoding/base64"

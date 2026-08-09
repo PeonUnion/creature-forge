@@ -1,6 +1,6 @@
 package server
 
-// Species + actions CRUD (mirror of server._species_* + species.py).
+// Species + actions CRUD.
 import (
 	"encoding/json"
 	"errors"
@@ -80,7 +80,7 @@ func (s *Server) speciesGet(w http.ResponseWriter, r *http.Request) {
 	s.json(w, detail, http.StatusOK)
 }
 
-// listSpecies mirrors SpeciesService.list().
+// listSpecies lists all species with their action summaries.
 func (s *Server) listSpecies() ([]map[string]any, error) {
 	ids, err := s.Store.ListSpecies()
 	if err != nil {
@@ -112,7 +112,7 @@ func (s *Server) listSpecies() ([]map[string]any, error) {
 	return out, nil
 }
 
-// actionSummaries mirrors SpeciesService.list_actions().
+// actionSummaries lists action summaries for a species.
 func (s *Server) actionSummaries(speciesID string) []map[string]any {
 	acts, err := s.Store.ListActions(speciesID)
 	if err != nil {
@@ -133,7 +133,7 @@ func (s *Server) actionSummaries(speciesID string) []map[string]any {
 	return out
 }
 
-// speciesDetail mirrors SpeciesService.get() (raw skeleton + actions).
+// speciesDetail returns the raw skeleton document plus its actions.
 func (s *Server) speciesDetail(id string) (map[string]any, error) {
 	b, err := os.ReadFile(s.Store.SpeciesPath(id))
 	if err != nil {
@@ -291,8 +291,7 @@ func mapToSpecies(m map[string]any) (*store.Species, error) {
 	return &sp, nil
 }
 
-// saveDefaultRaw writes default.json with schema/species defaults set
-// (mirror of SpeciesService.save_default).
+// saveDefaultRaw writes default.json with schema/species defaults set.
 func (s *Server) saveDefaultRaw(speciesID string, body map[string]any) error {
 	b, err := json.Marshal(body)
 	if err != nil {
@@ -330,8 +329,7 @@ func (s *Server) saveActionRaw(speciesID, actionID string, body map[string]any) 
 	return s.Store.SaveAction(&m)
 }
 
-// writePresetSchema derives and writes species/<id>/preset_schema.json
-// (mirror of SpeciesService.build_preset_schema + _write_preset_schema).
+// writePresetSchema derives and writes species/<id>/preset_schema.json.
 func (s *Server) writePresetSchema(sp *store.Species) {
 	old := map[string]any{}
 	if prev, err := s.Store.GetPresetSchema(sp.SpeciesID); err == nil && prev != nil {
@@ -343,7 +341,7 @@ func (s *Server) writePresetSchema(sp *store.Species) {
 	_ = s.Store.SavePresetSchema(sp.SpeciesID, schema)
 }
 
-// buildPresetSchema mirrors SpeciesService.build_preset_schema.
+// buildPresetSchema derives the preset schema from a species skeleton.
 func buildPresetSchema(sp *store.Species, existing map[string]any) map[string]any {
 	seen := map[string]bool{}
 	joints3d := make([]string, 0)

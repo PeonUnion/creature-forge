@@ -1,10 +1,8 @@
 package server
 
-// Package server is the Go mirror of creatureforge/server.py + api.py: it
-// exposes the full HTTP API (species / presets / skins / actions / 3D data)
-// over the store + engine packages, and serves the Vue SPA in production.
-//
-// JSON contracts match the Python server exactly (front-end unchanged).
+// Package server exposes the full HTTP API (species / presets / skins /
+// actions / 3D data) over the store + engine packages, and serves the
+// embedded Vue SPA in production.
 
 import (
 	"embed"
@@ -30,14 +28,14 @@ import (
 //go:embed static
 var staticFS embed.FS
 
-// Server is the assembled HTTP server (mirror of build_server).
+// Server is the assembled HTTP server.
 type Server struct {
 	Store *store.Store
 	Dev   bool
 	Log   *logging.Logger
 }
 
-// New assembles a Server from config (mirror of build_server).
+// New assembles a Server from config.
 func New(cfg *config.Config, log *logging.Logger) *Server {
 	return &Server{
 		Store: store.New(cfg.Data.Root),
@@ -94,8 +92,7 @@ func (s *Server) Handler() http.Handler {
 	})
 }
 
-// pathParts splits a path after prefix into unescaped non-empty segments
-// (mirror of server._path_parts).
+// pathParts splits a path after prefix into unescaped non-empty segments.
 func pathParts(p, prefix string) []string {
 	rest := strings.TrimSuffix(strings.TrimPrefix(p, prefix), "/")
 	if rest == "" {
@@ -116,7 +113,7 @@ func pathParts(p, prefix string) []string {
 // helpers
 // ---------------------------------------------------------------------------
 
-// json writes a JSON response (mirror of server._json).
+// json writes a JSON response.
 func (s *Server) json(w http.ResponseWriter, data any, status int) {
 	body, err := json.Marshal(data)
 	if err != nil {
@@ -137,12 +134,12 @@ func (s *Server) ok(w http.ResponseWriter, extra map[string]any) {
 	s.json(w, m, http.StatusOK)
 }
 
-// fail writes {ok:false,error} with a status (mirror of error mapping).
+// fail writes {ok:false,error} with a status.
 func (s *Server) fail(w http.ResponseWriter, err error, status int) {
 	s.json(w, map[string]any{"ok": false, "error": err.Error()}, status)
 }
 
-// decodeBody reads and parses the JSON request body (mirror of _read_body).
+// decodeBody reads and parses the JSON request body.
 func decodeBody(r *http.Request, v any) error {
 	defer r.Body.Close()
 	dec := json.NewDecoder(r.Body)
@@ -179,7 +176,7 @@ func (s *Server) serveStatic(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
-// mimeTypeOf mirrors server._mime.
+// mimeTypeOf maps a file name to its Content-Type.
 func mimeTypeOf(name string) string {
 	switch strings.ToLower(path.Ext(name)) {
 	case ".html":

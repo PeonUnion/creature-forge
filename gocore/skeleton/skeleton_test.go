@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// 用真实数据（data/species/human）验证 Go 引擎与 Python 输出一致性
-// （golden 由 Python 生成：gocore/skeleton/testdata/golden_human.json）。
+// 用真实数据（data/species/human）验证引擎输出与基准数据一致
+// （基准：gocore/skeleton/testdata/golden_human.json）。
 
 const dataRoot = "../../data/species/human"
 
@@ -25,7 +25,7 @@ func load(t *testing.T, path string, v any) {
 
 func closeEnough(a, b float64) bool { return math.Abs(a-b) < 1e-6 }
 
-func TestBuildSkeletonMatchesPython(t *testing.T) {
+func TestBuildSkeletonMatchesGolden(t *testing.T) {
 	var skel SpeciesSkeleton
 	load(t, dataRoot+"/skeleton.json", &skel)
 	var def Default
@@ -37,7 +37,7 @@ func TestBuildSkeletonMatchesPython(t *testing.T) {
 	}
 	load(t, "testdata/golden_human.json", &golden)
 	if len(s.Joints) != len(golden.Joints) {
-		t.Fatalf("joints count: Go %d vs Python %d", len(s.Joints), len(golden.Joints))
+		t.Fatalf("joints count: got %d want %d", len(s.Joints), len(golden.Joints))
 	}
 	for name, want := range golden.Joints {
 		got, ok := s.Joints[name]
@@ -47,18 +47,18 @@ func TestBuildSkeletonMatchesPython(t *testing.T) {
 		}
 		for i := 0; i < 3; i++ {
 			if !closeEnough(got[i], want[i]) {
-				t.Errorf("joint %s[%d]: Go %v vs Python %v", name, i, got[i], want[i])
+				t.Errorf("joint %s[%d]: got %v want %v", name, i, got[i], want[i])
 			}
 		}
 	}
 	// 关键关节抽查
 	if !closeEnough(s.Joints["head"][0], golden.Joints["head"][0]) ||
 		!closeEnough(s.Joints["head"][1], golden.Joints["head"][1]) {
-		t.Errorf("head mismatch: Go %v Python %v", s.Joints["head"], golden.Joints["head"])
+		t.Errorf("head mismatch: got %v want %v", s.Joints["head"], golden.Joints["head"])
 	}
 }
 
-func TestPoseMatchesPython(t *testing.T) {
+func TestPoseMatchesGolden(t *testing.T) {
 	var skel SpeciesSkeleton
 	load(t, dataRoot+"/skeleton.json", &skel)
 	var def Default
@@ -81,7 +81,7 @@ func TestPoseMatchesPython(t *testing.T) {
 	for idx, want := range map[int]map[string][3]float64{0: golden.Pose0, 5: golden.Pose5} {
 		got := Pose(s, &motion, idx, params)
 		if len(got) != len(want) {
-			t.Fatalf("pose%d joints: Go %d vs Python %d", idx, len(got), len(want))
+			t.Fatalf("pose%d joints: got %d want %d", idx, len(got), len(want))
 		}
 		for name, w := range want {
 			g, ok := got[name]
@@ -91,14 +91,14 @@ func TestPoseMatchesPython(t *testing.T) {
 			}
 			for i := 0; i < 3; i++ {
 				if !closeEnough(g[i], w[i]) {
-					t.Errorf("pose%d %s[%d]: Go %v vs Python %v", idx, name, i, g[i], w[i])
+					t.Errorf("pose%d %s[%d]: got %v want %v", idx, name, i, g[i], w[i])
 				}
 			}
 		}
 	}
 }
 
-func TestLBSMatchesPython(t *testing.T) {
+func TestLBSMatchesGolden(t *testing.T) {
 	var skel SpeciesSkeleton
 	load(t, dataRoot+"/skeleton.json", &skel)
 	var def Default
@@ -127,14 +127,14 @@ func TestLBSMatchesPython(t *testing.T) {
 	}
 	load(t, "testdata/golden_human.json", &golden)
 	if len(got) != len(golden.LBS) {
-		t.Fatalf("lbs len: Go %d vs Python %d", len(got), len(golden.LBS))
+		t.Fatalf("lbs len: got %d want %d", len(got), len(golden.LBS))
 	}
 	mismatch := 0
 	for i := range got {
 		if math.Abs(got[i]-golden.LBS[i]) > 1e-6 {
 			mismatch++
 			if mismatch <= 5 {
-				t.Errorf("lbs[%d]: Go %v vs Python %v", i, got[i], golden.LBS[i])
+				t.Errorf("lbs[%d]: got %v want %v", i, got[i], golden.LBS[i])
 			}
 		}
 	}

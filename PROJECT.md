@@ -1,4 +1,4 @@
-# CreatureForge — 数据驱动角色素材管线（Go 全量迁移）
+# CreatureForge — 数据驱动角色素材管线
 
 数据驱动角色管线：3D 动作引擎 + 物种/预设 + CLI/HTTP 双入口 + Web 前端（embed 进 server）+ Godot demo。
 
@@ -9,14 +9,13 @@
 ```
 gocore/
   expr/                    ← 动作表达式 DSL（const/param/phase/index/frame_count/signal/
-                               sin/cos/neg/rect/abs/add/sub/mul/table）——镜像原 motion.py
+                               sin/cos/neg/rect/abs/add/sub/mul/table）
   skeleton/                ← 3D 引擎：BuildSkeleton / Pose / FKWorldPose / SkinnedVertices
-                               （镜像原 skeleton3d.py；与 Python golden 逐顶点一致 + 基准 16×）
+                               （FK 姿态 / LBS 蒙皮，与基准数据一致）
   internal/store/          ← 数据层：完整领域模型（Species/Default/Preset/Skin/Motion/Baked）
                                + JSON CRUD（species/presets/skins/actions）+ 引擎转换
-  internal/server/         ← HTTP API 路由（镜像原 server.py 全部契约）
-                               + //go:embed static/（前端构建产物）
-  internal/render/         ← 渲染：轨道相机透视投影 + 地面网格 + 骨架绘制（标准库替代 Pillow）
+  internal/server/         ← HTTP API 路由 + //go:embed static/（前端构建产物）
+  internal/render/         ← 渲染：轨道相机透视投影 + 地面网格 + 骨架绘制（PNG/GIF/sprite）
   internal/logging/        ← zap 自封装（Level/Format/Output）
   internal/config/         ← viper 读 config.yaml + CFG_ 环境变量覆盖
   cmd/gocore-server/       ← HTTP server（embed 前端，单二进制）
@@ -36,7 +35,7 @@ gocore/
 | `data/skins/<id>.json` | 皮肤（预设实例：materials + params + parts） |
 | `data/templates/` | 形态模板（humanoid / custom 从 0 开始） |
 
-## HTTP API（`gocore-server`，契约与原 Python server 一致）
+## HTTP API（`gocore-server`）
 
 | 端点 | 说明 |
 |---|---|
@@ -65,7 +64,7 @@ gocore --data-dir data --species human --action walk3d --task pose --frame 0
 gocore --data-dir data --species human --action walk3d --task lbs --frame 0
 ```
 
-> CLI 全命令（species/action/preset/skin/render/upgrade）迁移中，见 `TODO.md`。
+> CLI 全命令（species/action/preset/skin/render/upgrade）开发中，见 `TODO.md`。
 
 ## 启动
 
@@ -94,7 +93,7 @@ gocore --data-dir data --species human --action walk3d --task lbs --frame 0
 - **骨骼与 walk 按真实 CMU 动捕重建**（subject16, `16_15.bvh`）：骨长比例精确一致、全关节旋转照搬。
 - 预设 = 基于物种的实例：**体型参数**（schema 由 `param_chains` 派生）+ **动作参数**（schema 由动作 `params` 派生）。
 
-## 迁移状态
+## 当前状态
 
 - ✅ expr DSL / FK / LBS / store / HTTP API / render / logging / config / 前端 embed
 - 🔜 glTF 导出 · CLI 全命令 · 向导 wizard · 动作参数提取

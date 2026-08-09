@@ -1,6 +1,6 @@
 package server
 
-// Presets CRUD + bake (mirror of server._presets_* + presets.py).
+// Presets CRUD + bake.
 import (
 	"encoding/json"
 	"errors"
@@ -105,7 +105,7 @@ func (s *Server) presetsPost(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, errors.New("preset not found: "+id), http.StatusNotFound)
 		return
 	}
-	// merge: keep existing fields, incoming overrides (mirror of update)
+	// merge: keep existing fields, incoming overrides
 	p, err := mapToPreset(body)
 	if err != nil {
 		s.fail(w, err, http.StatusBadRequest)
@@ -159,8 +159,8 @@ func (s *Server) listPresets() ([]map[string]any, error) {
 	return out, nil
 }
 
-// presetSchemaInfo builds the schema_info block (mirror of
-// PresetService.build_preset_schema).
+// presetSchemaInfo builds the schema_info block (body params + default body
+// + per-action params).
 func (s *Server) presetSchemaInfo(speciesID string) map[string]any {
 	bodyParams := map[string]any{}
 	if ps, err := s.Store.GetPresetSchema(speciesID); err == nil && ps != nil {
@@ -210,7 +210,7 @@ func (s *Server) presetWithSchema(p *store.Preset) map[string]any {
 	}
 }
 
-// presetNew returns a blank form + schema (mirror of new_schema).
+// presetNew returns a blank form plus its schema.
 func (s *Server) presetNew(speciesID string) (map[string]any, error) {
 	info := s.presetSchemaInfo(speciesID)
 	body := map[string]any{}
@@ -241,8 +241,7 @@ func mapToPreset(m map[string]any) (*store.Preset, error) {
 	return &p, nil
 }
 
-// mergePreset keeps existing fields, applies incoming overrides (mirror of
-// PresetService.update).
+// mergePreset keeps existing fields, applies incoming overrides.
 func mergePreset(existing, incoming *store.Preset, id string) *store.Preset {
 	out := *existing
 	if incoming.PresetID != "" {
@@ -270,7 +269,7 @@ func mergePreset(existing, incoming *store.Preset, id string) *store.Preset {
 	return &out
 }
 
-// bakePreset generates the baked block (mirror of PresetService.bake):
+// bakePreset generates the baked block (frozen skel3d + resolved action params):
 // frozen skel3d from body params + resolved action params.
 func (s *Server) bakePreset(presetID string) error {
 	p, err := s.Store.GetPreset(presetID)
@@ -295,7 +294,7 @@ func (s *Server) bakePreset(presetID string) error {
 	sk := skeleton.BuildSkeleton(sp.ToEngineSkeleton(), engDef, p.Body)
 
 	// action param values: resolve preset.actions overrides against motion
-	// defaults with skel3d coord params as refs (mirror of motion._resolve_params).
+	// defaults with skel3d coord params as refs.
 	actionVals := map[string]map[string]float64{}
 	for aid, ap := range p.Actions {
 		m, err := s.Store.GetAction(p.Species, aid)

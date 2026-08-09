@@ -1,7 +1,5 @@
-// Package render is the Go mirror of creatureforge/render.py + the 3D
-// projection/drawing of skeleton3d.py: orbit camera + pinhole perspective
-// projection, ground grid, and skeleton/pose drawing to PNG/GIF — replacing
-// Pillow with the standard library (image/draw).
+// Package render draws skeletons/poses with an orbit camera + pinhole
+// perspective projection and a ground grid, to PNG/GIF (stdlib image/draw).
 package render
 
 import (
@@ -16,7 +14,7 @@ import (
 	"strconv"
 )
 
-// Canvas + camera constants (mirror render.py / skeleton3d.py).
+// Canvas + camera constants.
 const (
 	CanvasW, CanvasH = 960, 600
 	FOVDeg           = 45.0
@@ -31,7 +29,7 @@ var Focal = (CanvasH / 2.0) / math.Tan(FOVDeg*math.Pi/180/2.0)
 // Center is the default skeleton lookAt target.
 var Center = [3]float64{480.0, 300.0, 0.0}
 
-// Palette colors (mirror render.py).
+// Palette colors.
 var (
 	BG       = color.RGBA{17, 24, 39, 255}    // 111827
 	GUIDE    = color.RGBA{75, 94, 122, 255}   // 4b5e7a
@@ -51,7 +49,7 @@ type SkeletonView struct {
 }
 
 // ---------------------------------------------------------------------------
-// Projection (mirror skeleton3d.project3d)
+// Projection
 // ---------------------------------------------------------------------------
 
 // Project3d projects world joints (Y-down) to screen pixels via an orbit
@@ -105,7 +103,7 @@ func Project3d(joints map[string][3]float64, yawDeg, pitchDeg, distance float64,
 }
 
 // FitDistance computes the camera distance so the model occupies `fill` of the
-// vertical FOV (mirror skeleton3d._fit_distance).
+// vertical FOV.
 func FitDistance(joints map[string][3]float64, center [3]float64, fill float64) float64 {
 	r := 1.0
 	for _, j := range joints {
@@ -123,7 +121,7 @@ func clampF(v, lo, hi float64) float64 {
 }
 
 // ---------------------------------------------------------------------------
-// Drawing primitives (mirror render.py)
+// Drawing primitives
 // ---------------------------------------------------------------------------
 
 func setPixel(dst *image.RGBA, x, y int, c color.Color) {
@@ -132,8 +130,8 @@ func setPixel(dst *image.RGBA, x, y int, c color.Color) {
 	}
 }
 
-// thickLine draws a line of the given width (square brush), mirroring the
-// two-pass bone draw (dark wide underlay + colored thin line).
+// thickLine draws a line of the given width (square brush) — dark wide
+// underlay + colored thin line.
 func thickLine(dst *image.RGBA, x0, y0, x1, y1, width int, c color.Color) {
 	if width < 1 {
 		width = 1
@@ -205,7 +203,7 @@ func abs(v int) int {
 }
 
 // ---------------------------------------------------------------------------
-// Scene rendering (mirror skeleton3d.render_pose / render_view)
+// Scene rendering
 // ---------------------------------------------------------------------------
 
 // RenderPose draws a single pose/skeleton frame to an RGBA image. Grid overlay
@@ -245,8 +243,8 @@ func RenderPose(pose map[string][3]float64, bones [][2]string,
 	return dst
 }
 
-// drawGroundGrid mirrors skeleton3d._draw_ground_grid (world XZ plane at
-// ground_y, projected with the same camera).
+// drawGroundGrid draws a world XZ-plane grid at ground_y with the same
+// camera.
 func drawGroundGrid(dst *image.RGBA, pose map[string][3]float64,
 	yawDeg, pitchDeg, distance float64, center [3]float64,
 	panX, panY float64, groundY float64, gridRad float64) {
@@ -317,7 +315,7 @@ func PNGBytes(img *image.RGBA) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// PNGDataURL returns a data:image/png;base64 URL (mirror image_to_data_url).
+// PNGDataURL returns a data:image/png;base64 URL.
 func PNGDataURL(img *image.RGBA) (string, error) {
 	b, err := PNGBytes(img)
 	if err != nil {
@@ -361,7 +359,7 @@ func toPaletted(img *image.RGBA) *image.Paletted {
 }
 
 // GIFDataURL encodes frames (resized to w×h) as an animated GIF data URL
-// (duration 180ms/frame, loop forever — mirror of the Python render).
+// (duration 180ms/frame, loop forever).
 func GIFDataURL(frames []*image.RGBA, w, h int) (string, error) {
 	var buf bytes.Buffer
 	g := &gif.GIF{LoopCount: 0}
@@ -377,7 +375,7 @@ func GIFDataURL(frames []*image.RGBA, w, h int) (string, error) {
 	return "data:image/gif;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
 
-// SpriteSheetDataURL pastes frames horizontally (mirror sprite sheet).
+// SpriteSheetDataURL pastes frames horizontally.
 func SpriteSheetDataURL(frames []*image.RGBA) (string, error) {
 	if len(frames) == 0 {
 		return "", nil

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Benchmark16Frames 模拟真实场景：16 帧 LBS 蒙皮耗时（Python 纯实现约 829ms）。
+// Benchmark16Frames 模拟真实场景：16 帧 LBS 蒙皮耗时。
 func Benchmark16Frames(b *testing.B) {
 	var skel SpeciesSkeleton
 	loadBench(b, dataRoot+"/skeleton.json", &skel)

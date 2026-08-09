@@ -1,5 +1,5 @@
 # ============================================================================
-# CreatureForge 跨平台二进制发布（Go 全量迁移版）
+# CreatureForge 跨平台二进制发布
 # ----------------------------------------------------------------------------
 # 触发：
 #   - push tag v*（如 v0.1.0 / v1.0.0-rc.1）→ 构建 + GitHub Release
@@ -149,31 +149,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python3 - <<'PY'
-          import json, os, urllib.request
-          token = os.environ['GH_TOKEN']
-          repo = os.environ['GITHUB_REPOSITORY']
-          tag = os.environ['GITHUB_REF_NAME']
-          base = f'https://api.github.com/repos/{repo}'
-          h = {'Authorization': f'Bearer {token}',
-               'Accept': 'application/vnd.github+json',
-               'User-Agent': 'creature-forge'}
-          try:
-              req = urllib.request.Request(base + '/releases?per_page=100', headers=h)
-              rels = json.load(urllib.request.urlopen(req))
-          except Exception as e:
-              print('list releases failed:', e)
-              raise SystemExit(0)
-          for r in rels:
-              if r.get('tag_name') == tag:
-                  rid = r['id']
-                  try:
-                      urllib.request.urlopen(urllib.request.Request(
-                          f'{base}/releases/{rid}', method='DELETE', headers=h))
-                      print(f'deleted release {rid} (draft={r.get("draft")})')
-                  except Exception as e:
-                      print(f'delete release {rid} failed: {e}')
-          PY
+          # 反复重推同 tag 会产生重复 release/draft → 先删除旧 release（保留 tag 本身）
+          gh release delete "${GITHUB_REF_NAME}" --yes --cleanup-tag=false || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

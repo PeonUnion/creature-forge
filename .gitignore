@@ -6,15 +6,6 @@
 
 # --- Environment / toolchain ---
 .tools/
-.venv/
-.venv*/
-# --- Python caches ---
-__pycache__/
-*.pyc
-*.pyo
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
 
 # --- Godot project cache ---
 prototype/.godot/
@@ -26,10 +17,7 @@ build/
 node_modules/
 # 开发环境运行时信息 + 构建的本地二进制（scripts/start-dev.sh）
 /.dev/
-# pyinstaller 生成的 spec（Python 时代遗留，已删除）
-/creature-forge-*.spec
-*.spec.bak
-# 本地 pyinstaller 构建二进制（发布由 CI 产出）
+# 本地 Go 二进制（发布由 CI 产出）
 /creature-forge-cli-*
 /creature-forge-server-*
 # 构建时生成的版本元数据（cf_meta/version.json，打进产物用）

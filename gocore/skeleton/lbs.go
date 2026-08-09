@@ -60,7 +60,7 @@ func readJSON(path string, v any) error {
 }
 
 // ---------------------------------------------------------------------------
-// LBS vertex skinning (mirror skinned_vertices)
+// LBS vertex skinning
 // ---------------------------------------------------------------------------
 
 // SkinnedVertices computes one frame's deformed vertices (flat [x,y,z,...],

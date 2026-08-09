@@ -1,7 +1,6 @@
-// Package skeleton is a Go mirror of creatureforge/skeleton3d.py: reads
-// species skeleton/default + motion JSON (external data) and computes FK
-// poses (build_skeleton_3d / pose_3d / solve_fk3d) and LBS vertex skinning
-// (skinned_vertices). Data-driven — no values hardcoded.
+// Package skeleton reads species skeleton/default + motion JSON (external
+// data) and computes FK poses and LBS vertex skinning. Data-driven — no
+// values hardcoded.
 package skeleton
 
 import (
@@ -13,7 +12,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// Data models (mirror models.py / skeleton JSON schemas)
+// Data models (matching the skeleton JSON schemas)
 // ---------------------------------------------------------------------------
 
 // CoordParam is a species-level coordinate parameter definition.
@@ -95,7 +94,7 @@ type FK3D struct {
 	Rotations3d map[string]map[string]*expr.Expr `json:"rotations3d"` // joint → {x_rot,y_rot,z_rot}
 }
 
-// Skeleton is the built 3D skeleton (mirror of build_skeleton_3d result).
+// Skeleton is the built 3D skeleton.
 type Skeleton struct {
 	Joints     map[string][3]float64
 	FkTree     map[string]*string
@@ -108,7 +107,7 @@ type Skeleton struct {
 }
 
 // ---------------------------------------------------------------------------
-// Build (mirror build_skeleton_3d coordinate part + _build_fk_local)
+// Build (coordinate resolution + FK local frame)
 // ---------------------------------------------------------------------------
 
 func coordParams(skel *SpeciesSkeleton, body map[string]float64) map[string]float64 {
@@ -166,7 +165,7 @@ func BuildSkeleton(skel *SpeciesSkeleton, def *Default, body map[string]float64)
 }
 
 // ---------------------------------------------------------------------------
-// FK math (mirror _rot_mat / _mat_vec / _mat_mul / solve_fk3d)
+// FK math (rotation matrices + forward kinematics)
 // ---------------------------------------------------------------------------
 
 type mat3 [3][3]float64
@@ -204,8 +203,8 @@ func matMul(a, b mat3) mat3 {
 	return o
 }
 
-// SolveFK mirrors solve_fk3d (position uses parent accumulated rotation; own
-// rotation only affects children).
+// SolveFK propagates rotations down the FK tree (position uses parent
+// accumulated rotation; own rotation only affects children).
 func SolveFK(rootPos [3]float64, fkTree map[string]*string, fkLocal map[string][3]float64,
 	rotations map[string][3]float64) map[string][3]float64 {
 	// BFS topological order
@@ -256,10 +255,10 @@ func SolveFK(rootPos [3]float64, fkTree map[string]*string, fkLocal map[string][
 }
 
 // ---------------------------------------------------------------------------
-// Pose (mirror pose_3d FK branch + _fk_world_pose FK accumulation)
+// Pose (FK branch)
 // ---------------------------------------------------------------------------
 
-// Pose computes one frame pose in 3D space via FK (mirror of pose_3d's FK path).
+// Pose computes one frame pose in 3D space via FK.
 // Returns {joint: [x,y,z]}.
 func Pose(skel *Skeleton, motion *Motion, index int, params map[string]float64) map[string][3]float64 {
 	frameCount := motion.FrameCount
@@ -331,8 +330,8 @@ func evalOr(e *expr.Expr, ctx *expr.Ctx) float64 {
 	return e.Eval(ctx)
 }
 
-// FKWorldPose returns per-joint world position + world rotation matrices for
-// LBS (mirror of _fk_world_pose).
+// FKWorldPose returns per-joint world position + world rotation matrices
+// used by LBS vertex skinning.
 func FKWorldPose(skel *Skeleton, motion *Motion, index int, params map[string]float64) (map[string][3]float64, map[string]mat3) {
 	frameCount := motion.FrameCount
 	if frameCount <= 0 {

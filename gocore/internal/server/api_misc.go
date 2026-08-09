@@ -26,7 +26,7 @@ func (s *Server) routeTemplates(w http.ResponseWriter, r *http.Request) {
 	s.json(w, map[string]any{"templates": items}, http.StatusOK)
 }
 
-// templatesList mirrors TemplatesService.list (data/templates/*.json).
+// templatesList lists data/templates/*.json morph templates.
 func (s *Server) templatesList() ([]map[string]any, error) {
 	dir := filepath.Join(s.Store.DataDir, "templates")
 	entries, err := os.ReadDir(dir)
@@ -81,9 +81,9 @@ func (s *Server) templatesList() ([]map[string]any, error) {
 }
 
 // routeWizard — the species wizard (init/joint/limb/chain/pose/coord/commit).
-// Pending: full migration of creatureforge/wizard.py.
+// Pending: species wizard (init/joint/coord/commit).
 func (s *Server) routeWizard(w http.ResponseWriter, r *http.Request) {
-	s.fail(w, errors.New("wizard not migrated yet (creatureforge/wizard.py)"), http.StatusNotImplemented)
+	s.fail(w, errors.New("species wizard not implemented yet"), http.StatusNotImplemented)
 }
 
 // routePreset3d — preset rendering (skeleton or action frame/GIF).
@@ -119,7 +119,7 @@ func (s *Server) routePreset3d(w http.ResponseWriter, r *http.Request) {
 }
 
 // actionExtractParams — split a single intensity into per-part/dimension
-// params. Pending: full migration of motion.extract_params.
+// params. Pending: action parameter extraction.
 func (s *Server) actionExtractParams(speciesID, actionID string) (map[string]any, error) {
-	return nil, errors.New("action param extraction not migrated yet (motion.extract_params)")
+	return nil, errors.New("action param extraction not implemented yet")
 }

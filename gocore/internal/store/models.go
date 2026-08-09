@@ -1,6 +1,6 @@
-// Package store is the data-access layer for the full Go migration: it owns
-// the complete domain models (mirroring the real JSON files under data/
-// species|presets|skins) and the Store CRUD over the data directory.
+// Package store is the data-access layer: it owns the complete domain models
+// (mirroring the real JSON files under data/ species|presets|skins) and the
+// Store CRUD over the data directory.
 //
 // Data lives in external JSON — the code never hardcodes any values. The
 // engine package (skeleton) stays independent; store only provides raw models

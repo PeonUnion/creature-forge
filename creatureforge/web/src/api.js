@@ -1,7 +1,6 @@
 /**
  * CreatureForge API 层
  *
- * 类型参考：creatureforge/models.py / creatureforge/interfaces.ts
  * @module api
  */
 
@@ -180,7 +179,7 @@ export const api = {
   /** 3D 骨架：任意角度(yaw/pitch) + 距离(透视) 渲染 PNG（species_id 路径） */
   renderSkeleton3d: (id, qs) => raw(`/api/skeleton3d/${encodeURIComponent(id)}?${qs}`),
 
-  /** 骨架 3D 数据（WebGL 实时渲染用）：应用体型后的 joints/bones/center，不走 Pillow */
+  /** 骨架 3D 数据（WebGL 实时渲染用）：应用体型后的 joints/bones/center */
   skeleton3dData: (id, qs = 'data=1') => raw(`/api/skeleton3d/${encodeURIComponent(id)}?${qs}`),
 
   /** 3D 动作：任意角度 + 距离 单帧渲染 PNG（动作按 species 获取与渲染） */

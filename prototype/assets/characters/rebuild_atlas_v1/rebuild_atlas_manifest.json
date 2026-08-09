@@ -1,5 +1,5 @@
 {
-  "generator": "process_rebuild_atlas.py",
+  "generator": "process_rebuild_atlas",
   "generator_version": 1,
   "base_source": "prototype/assets/characters/generated/neutral_face_base_rebuild_v1_male.png",
   "feature_source": "prototype/assets/characters/generated/facial_feature_atlas_rebuild_v1_male.png",

@@ -2,11 +2,11 @@
 
 [English](README.md) | [**简体中文**](README_ZH.md)
 
-数据驱动角色素材管线：**Go 全量重写（无 Python）**。3D 动作引擎（CMU 动捕真实数据）+ 物种/预设 + CLI/HTTP 双入口 + Web 前端预览（Vue 3，embed 进 server）+ Godot demo。
+数据驱动角色素材管线：**纯 Go 后端 + Vue 3 前端**。3D 动作引擎（CMU 动捕真实数据）+ 物种/预设 + CLI/HTTP 双入口 + Web 前端预览（Vue 3，embed 进 server）+ Godot demo。
 
 ## 项目内容
 
-- **纯 Go 后端**（`gocore/`）：从 Python 全量迁移而来——数据仍全部在外部 JSON，代码只做引擎处理，**不硬编码任何数据**。
+- **纯 Go 后端**（`gocore/`）：数据全部在外部 JSON，代码只做引擎处理，**不硬编码任何数据**。
 - **3D 动作引擎**：骨骼拓扑（`skeleton.json`）+ FK 关节旋转驱动动作，任意视角（轨道相机）渲染 PNG / GIF。
 - **真实动捕**：骨骼与 `walk3d` 完全按 **CMU MoCap（subject16, `16_15.bvh`）** 数据重建——骨长比例精确一致、全关节旋转照搬。
 - **物种 / 预设**：物种定义骨骼拓扑与动作；预设是基于物种的实例（调体型 + 动作幅度）。
@@ -20,11 +20,11 @@ gocore/                                            ← Go 全量后端（数据�
   cmd/gocore-server/                               ← HTTP server（//go:embed 前端，单二进制）
   cmd/gocore/                                      ← CLI（不含前端）
   expr/                                            ← 动作表达式 DSL（const/param/sin/table…）
-  skeleton/                                        ← 3D 引擎（FK 姿态 / LBS 蒙皮，与 Python golden 一致）
+  skeleton/                                        ← 3D 引擎（FK 姿态 / LBS 蒙皮，与基准数据一致）
   internal/store/                                  ← 数据层（species/preset/skin/motion JSON CRUD）
-  internal/server/                                 ← HTTP API 路由（镜像原 server.py 契约）
+  internal/server/                                 ← HTTP API 路由
   internal/server/static/                          ← 前端构建产物（embed，由 scripts/build.sh 同步）
-  internal/render/                                 ← 渲染（标准库替代 Pillow：PNG/GIF/sprite）
+  internal/render/                                 ← 渲染（PNG/GIF/sprite）
   internal/logging/  internal/config/              ← zap 日志封装 + viper 读 config.yaml
 data/                                              ← 数据目录（默认仓库根 data/，--data-dir 可覆盖）
   species/human/                                   ← 物种：骨骼 + 默认体型 + 动作
@@ -32,7 +32,7 @@ data/                                              ← 数据目录（默认仓�
     actions3d/walk3d.json                          ← 3D 动作（FK 旋转，真实 CMU 数据）
     skin/                                          ← 蒙皮基底（mesh/weights/skin_params）
   presets/  skins/  templates/                     ← 预设 / 皮肤 / 形态模板
-creatureforge/web/                                 ← Vue 3 前端（唯一保留的 Python 时代模块）
+creatureforge/web/                                 ← Vue 3 前端
 scripts/
   build.sh                                         ← 前端构建 → 同步 static/ → 构建两个 Go 二进制
   start-dev.sh / stop-dev.sh                       ← 开发环境（gocore-server --dev + Vite 热更新）
@@ -87,8 +87,8 @@ cd gocore && go vet ./... && go test ./...   # expr/skeleton/store/server/render
 cd creatureforge/web && pnpm test:e2e        # 前端 E2E
 ```
 
-Go 单测覆盖（数据用真实 `data/`，与 Python golden 一致）：
-- `skeleton` — FK 姿态 / LBS 蒙皮与 Python 输出逐顶点一致（容差 1e-6）+ 性能基准（~16×）
+Go 单测覆盖（数据用真实 `data/`，与基准数据一致）：
+- `skeleton` — FK 姿态 / LBS 蒙皮与基准输出逐顶点一致（容差 1e-6）+ 性能基准
 - `store` — 全物种/预设/动作加载 + 引擎链路 + CRUD
 - `server` — HTTP API 集成测试（httptest 对真实数据）+ embed 静态服务
 - `render` — PNG/GIF/sprite 渲染可解码验证
@@ -131,7 +131,7 @@ gocore --data-dir data --species human --action walk3d --task pose --frame 0   #
 gocore --data-dir data --species human --action walk3d --task lbs --frame 0    # LBS 蒙皮顶点
 ```
 
-> Go CLI 全命令（species/action/preset/skin/render/upgrade）迁移中，见 `TODO.md`。
+> Go CLI 全命令（species/action/preset/skin/render/upgrade）开发中，见 `TODO.md`。
 
 ## 3D 架构（FK 关节旋转 + 真实动捕）
 
@@ -152,13 +152,12 @@ gocore --data-dir data --species human --action walk3d --task lbs --frame 0    #
 
 ## 当前状态与路线图
 
-- ✅ Go 全量迁移：expr DSL / FK 姿态 / LBS 蒙皮 / 数据层 / HTTP API / 渲染（Pillow 替代）/ 日志 / 配置
+- ✅ 后端：expr DSL / FK 姿态 / LBS 蒙皮 / 数据层 / HTTP API / 渲染 / 日志 / 配置
 - ✅ 前端 embed：`gocore-server` 单二进制（API + SPA），CLI 不含前端
-- ✅ HTTP API 契约与原 Python server 一致（前端未改动）
-- 🔜 glTF 导出（`export_glb`）；Go CLI 全命令；向导 wizard 迁移
+- ✅ HTTP API 契约稳定（前端未改动）
+- 🔜 glTF 导出（`export_glb`）；Go CLI 全命令；物种向导 wizard
 
 ## 相关文档
 
 - `PROJECT.md` — 当前架构与约束（强制数据驱动）
-- `TODO.md` — Go 迁移待办 / 交接
-- `docs/go-migration-assessment.md` — Go 迁移评估
+- `TODO.md` — 项目待办 / 交接

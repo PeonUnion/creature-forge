@@ -79,7 +79,7 @@
 - 模板（humanoid/dragon）加 `overall_scale`、`height` 两个全局参数。
 
 ### 4.3 导出对齐（glTF）：体型 = 骨骼 scale（可选演进）
-- 当前体型在 `build_skeleton_3d` 时算进 `positions_3d`（等价于**烘焙**），Godot/Unity 导入即可用。
+- 当前体型在骨架构建时算进 `positions_3d`（等价于**烘焙**），Godot/Unity 导入即可用。
 - 更"标准"的替代：导出时把体型参数写成**骨架节点 scale 通道**（对应 Roblox/Daz 的骨骼 scale），运行时引擎直接缩放——但这会改变绑定姿态语义，建议保留烘焙方案（简单可靠），文档注明。
 
 ### 4.4 皮肤参数保持「网格级 Morph」路线（与骨长参数互补）

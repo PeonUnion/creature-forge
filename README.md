@@ -2,11 +2,11 @@
 
 [**English**](README.md) | [简体中文](README_ZH.md)
 
-A data-driven character asset pipeline: **Go rewrite (no Python)**. 3D motion engine (real CMU MoCap data) + species/preset + CLI/HTTP dual entry + Vue 3 web front-end (embedded into the server binary) + Godot demo.
+A data-driven character asset pipeline: **pure Go backend + Vue 3 front-end**. 3D motion engine (real CMU MoCap data) + species/preset + CLI/HTTP dual entry + Web front-end (embedded into the server binary) + Godot demo.
 
 ## Highlights
 
-- **Pure Go backend** (`gocore/`) migrated from Python — data stays in external JSON, code is engine-only, **no hardcoded values**.
+- **Pure Go backend** (`gocore/`) — data stays in external JSON, code is engine-only, **no hardcoded values**.
 - **3D motion engine**: skeleton topology (`skeleton.json`) + FK joint rotations, rendered from any orbit-camera angle to PNG / GIF.
 - **Real MoCap**: skeleton & `walk3d` rebuilt exactly from **CMU MoCap (subject16, `16_15.bvh`)**.
 - **Species / Preset**: species defines topology & actions; preset is a species instance (body + action params).
@@ -20,14 +20,14 @@ gocore/                        ← Go backend
   cmd/gocore-server/           ← HTTP server (embedded front-end, single binary)
   cmd/gocore/                  ← CLI (no front-end)
   expr/                        ← motion expression DSL
-  skeleton/                    ← 3D engine (FK pose / LBS skinning, matches Python golden)
+  skeleton/                    ← 3D engine (FK pose / LBS skinning, matches golden data)
   internal/store/              ← data layer (species/preset/skin/motion JSON CRUD)
-  internal/server/             ← HTTP API (mirrors former server.py contract)
+  internal/server/             ← HTTP API
   internal/server/static/      ← built front-end (embedded; synced by scripts/build.sh)
-  internal/render/             ← rendering (stdlib, Pillow replacement: PNG/GIF/sprite)
+  internal/render/             ← rendering (PNG/GIF/sprite)
   internal/logging/ internal/config/ ← zap logging + viper config
 data/                          ← data root (species / presets / skins / templates)
-creatureforge/web/             ← Vue 3 front-end (only retained Python-era module)
+creatureforge/web/             ← Vue 3 front-end
 scripts/
   build.sh                     ← build front-end → sync static/ → build both Go binaries
   start-dev.sh / stop-dev.sh   ← dev environment (gocore-server --dev + Vite)
@@ -64,7 +64,7 @@ cd ../../gocore && go test ./...
 ./scripts/test.sh         # go vet/test + front-end E2E
 ```
 
-Go tests use the real `data/` and match the Python golden outputs (FK pose / LBS vertices within 1e-6; ~16× faster).
+Go tests use the real `data/` and match the golden outputs (FK pose / LBS vertices within 1e-6).
 
 ### Release
 
@@ -73,5 +73,4 @@ GitHub Actions builds cross-platform binaries on `v*` tags (Go cross-compile): `
 ## Docs
 
 - `PROJECT.md` — architecture & constraints (data-driven)
-- `TODO.md` — Go migration todo / handoff
-- `docs/go-migration-assessment.md` — Go migration assessment
+- `TODO.md` — project todo / handoff

@@ -1,5 +1,5 @@
 {
-  "generator": "process_base_features.py",
+  "generator": "process_base_features",
   "generator_version": 8,
   "sources": {
     "face": "prototype/assets/characters/generated/raw_face_base_v1_4x4.png",

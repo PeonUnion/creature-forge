@@ -355,7 +355,7 @@ func _load_vertical_body_candidate_frames() -> void:
 
 func _load_skin_preview_frames() -> void:
 	# 蒙皮预览：优先加载独立皮肤包 skins/<id>/preview/<skin>_<motion>_<view>/frameN.png
-	# （skin.py render 输出到皮肤包 preview/）；否则回退 dist/<id>/skins/。
+	# （皮肤渲染输出到皮肤包 preview/）；否则回退 dist/<id>/skins/。
 	# 用 --skin-view 指定 front/side/back（默认 front）。
 	skin_frames.clear()
 	var skins_root := ""

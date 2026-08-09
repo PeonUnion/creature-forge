@@ -1,6 +1,6 @@
 package server
 
-// Skins CRUD + parts (mirror of server._skins_* + skins.py).
+// Skins CRUD + parts.
 import (
 	"encoding/base64"
 	"encoding/json"
@@ -235,8 +235,8 @@ func (s *Server) speciesOfPreset(presetID string) string {
 	return p.Species
 }
 
-// buildSkinSchema mirrors SkinService.build_skin_schema (reads
-// species/<id>/skin/skin_params.json).
+// buildSkinSchema reads species/<id>/skin/skin_params.json to derive the
+// skin schema (params / materials / body_scale).
 func (s *Server) buildSkinSchema(presetID string) map[string]any {
 	params := map[string]any{}
 	materials := map[string]any{"albedo": "#c9a58c", "roughness": 0.6, "metallic": 0.0}
@@ -277,7 +277,7 @@ func (s *Server) skinWithSchema(sk *store.Skin) map[string]any {
 	}
 }
 
-// skinNew returns a blank form + schema (mirror of new_schema).
+// skinNew returns a blank form plus its schema.
 func (s *Server) skinNew(presetID string) (map[string]any, error) {
 	schema := s.buildSkinSchema(presetID)
 	params := map[string]any{}

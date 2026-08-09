@@ -1,5 +1,5 @@
 {
-  "generator": "build_rebuild_runtime_assets.py",
+  "generator": "build_rebuild_runtime_assets",
   "generator_version": 2,
   "source": "prototype/assets/characters/rebuild_atlas_v1",
   "directions": [

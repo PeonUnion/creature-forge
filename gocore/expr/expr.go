@@ -1,6 +1,4 @@
-// Package expr implements the CreatureForge motion expression DSL evaluator,
-// a Go mirror of creatureforge/motion.py (motion._eval / _resolve_params /
-// _build_signals).
+// Package expr implements the CreatureForge motion expression DSL evaluator.
 //
 // Data-driven: expressions are parsed from external JSON; no values are
 // hardcoded. Supported ops: const / param / phase / index / frame_count /
@@ -13,7 +11,7 @@ import (
 	"math"
 )
 
-// Ctx is the evaluation context, mirroring motion._eval's ctx dict.
+// Ctx is the evaluation context.
 type Ctx struct {
 	Params     map[string]float64
 	Index      int
@@ -26,7 +24,7 @@ type Ctx struct {
 // or a single-op dict like {"mul":[{"param":"x"},{"const":2}]}.
 type Expr struct {
 	Num     *float64 // plain number
-	Raw     string   // bare string = signal name (motion._eval: str → signals[expr])
+	Raw     string   // bare string = signal name (str → signals[name])
 	Op      string   // one of the DSL ops
 	NumArg  *float64
 	StrArg  *string
@@ -95,7 +93,7 @@ func (e *Expr) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Eval evaluates the expression against ctx (mirror of motion._eval).
+// Eval evaluates the expression against ctx.
 func (e *Expr) Eval(ctx *Ctx) float64 {
 	if e == nil {
 		return 0
@@ -187,8 +185,8 @@ func (p *ParamValue) Eval(ctx *Ctx) float64 {
 	return p.Expr.Eval(ctx)
 }
 
-// BuildSignals compiles {name: expr} into callable closures (mirror of
-// motion._build_signals). Closures reference ctx at call time, so signals may
+// BuildSignals compiles {name: expr} into callable closures. Closures
+// reference ctx at call time, so signals may
 // reference one another.
 func BuildSignals(signals map[string]*Expr) map[string]func(*Ctx) float64 {
 	out := make(map[string]func(*Ctx) float64, len(signals))
@@ -199,8 +197,8 @@ func BuildSignals(signals map[string]*Expr) map[string]func(*Ctx) float64 {
 	return out
 }
 
-// ResolveParams resolves motion params from defaults + overrides (mirror of
-// motion._resolve_params). override values may be expressions referencing
+// ResolveParams resolves motion params from defaults + overrides. override
+// values may be expressions referencing
 // refs (body/coord params) and other action params.
 func ResolveParams(defaults map[string]float64, overrides map[string]*ParamValue, refs map[string]float64) (map[string]float64, error) {
 	merged := make(map[string]float64, len(defaults))

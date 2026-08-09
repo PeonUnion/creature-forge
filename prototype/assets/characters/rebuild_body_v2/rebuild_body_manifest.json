@@ -1,5 +1,5 @@
 {
-  "generator": "process_rebuild_body.py",
+  "generator": "process_rebuild_body",
   "generator_version": 1,
   "source": "prototype/assets/characters/generated/body_base_rebuild_v2_male.png",
   "directions": [

@@ -65,13 +65,13 @@
 | **3 幅度参数** | 定义可调幅度（动作强度） | 勾选关节/幅度 → 填 label/min/max | `params`（intensity 等） |
 | **4 时序/循环** | 帧数 / 循环类型 / 速度 / 是否可过渡 | 填表单 | `frame_count` + `signals`（循环相位） |
 
-> 关键帧插值引擎复用现有信号 DSL（`motion.py` table/phase），向导生成 `table` 关键帧数据。
+> 关键帧插值引擎复用现有信号 DSL（`table`/`phase`），向导生成 `table` 关键帧数据。
 
 ### 3.4 CLI 分步命令（镜像向导，交互式）
 
 ```bash
 # 物种向导：交互式分步（逐步提示，回车确认）
-creatureforge species wizard
+gocore species wizard
 #   1> 物种 ID: dragon
 #   2> 形态模板 [dual_quadruped/serpent/multi_pod/...]: dragon   （回车默认）
 #   3> 骨架：joint add chest <- spine / joint add wing_l <- shoulder_l ...
@@ -81,7 +81,7 @@ creatureforge species wizard
 #   done → 生成 skeleton.json / default.json / preset_schema.json
 
 # 动作向导：交互式分步
-creatureforge action wizard --species dragon
+gocore action wizard --species dragon
 #   1> 动作 ID: fly3d | 用途: 飞行
 #   2> 关键帧：keyframe add 0 姿势A / keyframe add 8 姿势B（或载入模板关键帧）
 #   3> 幅度参数：param add wing_flap 0.5-1.5
@@ -89,12 +89,12 @@ creatureforge action wizard --species dragon
 #   done → 生成 actions3d/fly3d.json
 
 # 分步子命令也支持非交互单步（脚本化）
-creatureforge species joint add dragon chest --parent spine --pos 0,-20,0
-creatureforge species limb mirror dragon wing_l --to wing_r
-creatureforge action keyframe set dragon fly3d 0 --pose '{"wing_l":[0.5,0,0],...}'
+gocore species joint add dragon chest --parent spine --pos 0,-20,0
+gocore species limb mirror dragon wing_l --to wing_r
+gocore action keyframe set dragon fly3d 0 --pose '{"wing_l":[0.5,0,0],...}'
 
 # 高级模式保留（兼容专家/脚本）
-creatureforge species create --json '...'   # 原样保留
+gocore species create --json '...'   # 原样保留
 ```
 
 > CLI 与 Web 共用同一个**步进器（WizardService）**：`species.wizard.stepN(...)` /
@@ -150,8 +150,8 @@ creatureforge species create --json '...'   # 原样保留
 | `default.positions_3d` | 任意 3D 坐标 | 保留（向导第 4 步拖拽生成，天然支持任意形态） |
 | 动作 `fk3d.rotations3d` | 任意关节旋转 | 保留（向导关键帧插值生成） |
 
-**不变量**：任何模板产出都能被现有引擎（`build_skeleton_3d` / `pose_3d` / `skinned_vertices` /
-`verify_motions3d`）消费；`verify_motions3d` 的检查项改为从通用 `constraints`（对称/刚性/弯曲基准）读取。
+**不变量**：任何模板产出都能被现有引擎（骨架构建 / FK 姿态 / LBS 蒙皮 /
+动作验证）消费；动作验证的检查项改为从通用 `constraints`（对称/刚性/弯曲基准）读取。
 
 ### 4.3 初始模板集（首批，全部数据驱动可扩展）
 
@@ -183,10 +183,10 @@ creatureforge species create --json '...'   # 原样保留
 
 ## 5. 后端支撑（WizardService）
 
-新增 `creatureforge/wizard.py`：物种/动作分步状态机 + 模板应用 + 校验。
+新增向导服务：物种/动作分步状态机 + 模板应用 + 校验。
 - `SpeciesWizard`：持步骤状态，`step(species_id, n, payload)` 逐层构建/校验 skeleton/default/schema。
-- `ActionWizard`：关键帧姿势 → 插值生成 `fk3d`（复用 `motion.py` 信号 DSL 生成 table）+ 根位移。
-- `templates.py` 或并入 wizard：加载 `data/templates/*.json`（模板即数据，不硬编码）。
+- `ActionWizard`：关键帧姿势 → 插值生成 `fk3d`（复用信号 DSL 生成 table）+ 根位移。
+- 模板服务：加载 `data/templates/*.json`（模板即数据，不硬编码）。
 - 暴露到 Api/HTTP：`/api/species/wizard/<step>`、`/api/action/wizard/...`（与 CLI 共用）。
 
 ---
@@ -195,9 +195,9 @@ creatureforge species create --json '...'   # 原样保留
 
 | 阶段 | 内容 | 交付 |
 |---|---|---|
-| **A** | 形态模板系统（数据驱动）+ **物种向导**（Web 分步 + CLI 分步交互）+ 骨架结构化编辑（去 JSON）+ 对称肢/关节/链表单 + 3D 预览 | `wizard.py` + `templates/*.json` + SpeciesView 改向导 + CLI `species wizard` |
+| **A** | 形态模板系统（数据驱动）+ **物种向导**（Web 分步 + CLI 分步交互）+ 骨架结构化编辑（去 JSON）+ 对称肢/关节/链表单 + 3D 预览 | 向导服务 + `templates/*.json` + SpeciesView 改向导 + CLI `species wizard` |
 | **B** | **动作向导**：关键帧姿势 → 插值生成 fk3d + 幅度参数 + 时序 | `ActionWizard` + SpeciesView 动作向导 + CLI `action wizard` |
-| **C** | 幻想生物模板集（dragon/quadruped/serpent/multi_pod/floating）+ `verify_motions3d` 通用化 + constraints 去人类化 + 文档 | 首批非人形物种可跑通（骨架/默认姿态/动作/预设/蒙皮/导出） |
+| **C** | 幻想生物模板集（dragon/quadruped/serpent/multi_pod/floating）+ 动作验证通用化 + constraints 去人类化 + 文档 | 首批非人形物种可跑通（骨架/默认姿态/动作/预设/蒙皮/导出） |
 
 > A/B 可与现有 human 数据并行（human 保留为 humanoid 模板实例）；C 完成即"不局限人"落地。
 
