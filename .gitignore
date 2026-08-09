@@ -45,6 +45,8 @@ creatureforge/web/playwright-report/
 
 # --- 数据目录（默认仓库根 data/：species 为资产提交；presets 为运行时用户数据） ---
 data/presets/
+# 向导临时草稿（浏览器/CLI 打开编辑时从正式文件派生，不入库）
+data/species/*/draft.json
 
 # --- 测试数据（E2E 用 test-data/，由 e2e/global-setup.mjs 生成，不提交） ---
 test-data/
