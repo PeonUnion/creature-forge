@@ -233,6 +233,7 @@ type Motion struct {
 	Description string                           `json:"description"`
 	Species     string                           `json:"species"`
 	FrameCount  int                              `json:"frame_count"`
+	Fps         int                              `json:"fps,omitempty"`
 	Params      map[string]Param                 `json:"params"`
 	Signals     map[string]*expr.Expr            `json:"signals"`
 	Fk3d        *FK3D                            `json:"fk3d,omitempty"`

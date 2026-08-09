@@ -33,6 +33,9 @@ func (s *Store) SpeciesPath(id string) string {
 func (s *Store) DefaultPath(id string) string {
 	return filepath.Join(s.SpeciesDir(), id, "default.json")
 }
+func (s *Store) PresetSchemaPath(id string) string {
+	return filepath.Join(s.SpeciesDir(), id, "preset_schema.json")
+}
 func (s *Store) ActionsDir(id string) string {
 	return filepath.Join(s.SpeciesDir(), id, "actions3d")
 }
@@ -151,6 +154,27 @@ func (s *Store) SaveSpecies(sp *Species) error {
 // SaveDefault writes species/<id>/default.json.
 func (s *Store) SaveDefault(d *SpeciesDefault) error {
 	return writeJSON(s.DefaultPath(d.Species), d)
+}
+
+// GetPresetSchema loads species/<id>/preset_schema.json (nil if absent).
+func (s *Store) GetPresetSchema(id string) (map[string]any, error) {
+	b, err := os.ReadFile(s.PresetSchemaPath(id))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var v map[string]any
+	if err := json.Unmarshal(b, &v); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", s.PresetSchemaPath(id), err)
+	}
+	return v, nil
+}
+
+// SavePresetSchema writes species/<id>/preset_schema.json.
+func (s *Store) SavePresetSchema(id string, v map[string]any) error {
+	return writeJSON(s.PresetSchemaPath(id), v)
 }
 
 // --- actions ---------------------------------------------------------------
