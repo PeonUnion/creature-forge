@@ -128,7 +128,7 @@
           <div class="preview-controls">
             <CameraControls v-model="cam" />
             <el-select v-model="previewAction" placeholder="骨架（应用体型）" clearable filterable style="width: 200px">
-              <el-option v-for="(a, aid) in schema.actions" :key="aid" :label="`动作：${a.title||aid}`" :value="aid" />
+              <el-option v-for="(a, aid) in pickedActions" :key="aid" :label="`动作：${a.title||aid}`" :value="aid" />
             </el-select>
           </div>
           <Skeleton3DViewer v-if="previewData" ref="previewViewer"
@@ -147,7 +147,7 @@
                          :label="`${s.title||s.skin_id} (${s.skin_id})`" :value="s.skin_id" />
             </el-select>
             <el-select v-model="previewAction" placeholder="选择动作" clearable filterable style="width: 150px">
-              <el-option v-for="(a, aid) in schema.actions" :key="aid" :label="a.title||aid" :value="aid" />
+              <el-option v-for="(a, aid) in pickedActions" :key="aid" :label="a.title||aid" :value="aid" />
             </el-select>
             <el-button size="small" type="primary" :loading="exporting" icon="Download"
                        :disabled="!previewSkinId || !previewAction" @click="exportGlb">导出 GLB</el-button>
@@ -241,6 +241,13 @@ const presetActionRows = computed(() => {
     paramsCount: Object.keys(all[aid]?.params || {}).length,
   }))
 })
+// 预设已选动作（预览/蒙皮用）：只显示本预设已添加的动作，而不是物种全部动作
+const pickedActions = computed(() => {
+  const all = schema.value.actions || {}
+  return Object.fromEntries(
+    Object.keys(current.value?.actions || {}).map(aid => [aid, all[aid] || { title: aid, params: {} }]),
+  )
+})
 function addAction() {
   if (!current.value || !addActionId.value) return
   current.value.actions = { ...(current.value.actions || {}), [addActionId.value]: {} }
@@ -252,6 +259,7 @@ function removeAction(aid) {
   delete next[aid]
   current.value.actions = next
   if (actDetail.value?.aid === aid) actDetail.value = null
+  if (previewAction.value === aid) previewAction.value = ''
 }
 function openActionDetail(aid) {
   const all = schema.value.actions || {}
