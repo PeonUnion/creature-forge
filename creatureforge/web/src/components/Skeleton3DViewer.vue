@@ -189,7 +189,8 @@ function init() {
   renderer.domElement.addEventListener('pointerup', (e) => {
     if (dragging) {
       const name = dragging.name
-      emit('dragend', { name, dx: dragAcc.dx, dy: dragAcc.dy, dz: dragAcc.dz })
+      // dy 取反：内部世界为 Y-up，positions_3d 为 Y-down（y 大=低），向上拖 = dy 负
+      emit('dragend', { name, dx: dragAcc.dx, dy: -dragAcc.dy, dz: dragAcc.dz })
       if (name) emit('pick', name)   // 拖拽后即选中该关节（树/面板联动）
       dragging = null; dragAcc = { dx: 0, dy: 0, dz: 0 }
       dragArmed = false; downHit = null
