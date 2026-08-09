@@ -390,8 +390,8 @@ function updateEditGrid() {
     Math.round(fitTarget.y / props.gridStep) * props.gridStep,
     Math.round(fitTarget.z / props.gridStep) * props.gridStep,
   )
-  if (isFront) editGrid.rotation.x = Math.PI / 2   // → XY 平面（正面/背面）
-  else editGrid.rotation.y = Math.PI / 2           // → YZ 平面（左右侧视）
+  if (isFront) editGrid.rotation.x = Math.PI / 2   // → XY 平面（正面/背面）：法线 Y→Z
+  else editGrid.rotation.z = Math.PI / 2           // → YZ 平面（左右侧视）：法线 Y→X（绕 Z 转，绕 Y 无效）
   scene.add(editGrid)
 }
 
