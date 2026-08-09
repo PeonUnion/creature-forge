@@ -33,6 +33,8 @@
                   <el-radio-button value="back">背面</el-radio-button>
                   <el-radio-button value="left">左侧视</el-radio-button>
                   <el-radio-button value="right">右侧视</el-radio-button>
+                  <el-radio-button value="top">俯视</el-radio-button>
+                  <el-radio-button value="bottom">仰视</el-radio-button>
                 </el-radio-group>
                 <el-switch v-model="snapEnabled" size="small" active-text="网格" inactive-text="自由" />
                 <el-input-number v-model="gridStep" size="small" :min="1" :max="100" :disabled="!snapEnabled" style="width: 96px" />
@@ -471,7 +473,7 @@ function onDragEnd({ name, dx, dy, dz }) {
   dirty.value = true
 }
 // 编辑视图与网格吸附
-const editPlane = ref('front')    // front/back=正/背面(锁z) / left/right=左右侧视(锁x)
+const editPlane = ref('front')    // front/back=正/背面(锁z) / left/right=左右侧视(锁x) / top/bottom=俯/仰视(锁y)
 
 // 全部关节坐标总表（批量查看/编辑 XYZ，直接修错位关节）
 const showCoords = ref(false)
@@ -497,10 +499,11 @@ const snapEnabled = ref(true)    // 网格吸附开关
 const gridStep = ref(5)          // 网格精度（落点吸附步长）
 const skeletonViewerApi = ref(null)
 const poseViewerApi = ref(null)
-// 编辑视图 → 相机对齐为对应 2D 正交视角（正面/背面/左侧视/右侧视）
+// 编辑视图 → 相机对齐为对应 2D 正交视角（正面/背面/左侧视/右侧视/俯视/仰视）
 const PLANE_VIEW = {
   front: { yaw: 0, pitch: 0 }, back: { yaw: 180, pitch: 0 },
   left: { yaw: 270, pitch: 0 }, right: { yaw: 90, pitch: 0 },
+  top: { yaw: 0, pitch: 90 }, bottom: { yaw: 0, pitch: -90 },
 }
 watch(editPlane, (pl) => {
   const cfg = PLANE_VIEW[pl] || { yaw: 0, pitch: 0 }
@@ -511,7 +514,10 @@ watch(editPlane, (pl) => {
 function onKeyMove(e) {
   if (mode.value !== 'normal' || (sub.value !== 'skeleton' && sub.value !== 'pose')) return
   const t = e.target
-  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+  const itype = t && t.tagName === 'INPUT' ? (t.type || '') : ''
+  const isText = (t && t.tagName === 'INPUT' && !['radio', 'checkbox', 'button'].includes(itype)) ||
+    (t && t.tagName === 'TEXTAREA') || (t && t.isContentEditable)
+  if (isText) return   // 文本输入框内不拦截方向键；radio/checkbox 等允许
   // 撤销/重做快捷键：Ctrl+Z 撤销、Ctrl+Y / Ctrl+Shift+Z 重做
   const mod = e.ctrlKey || e.metaKey
   if (mod && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
@@ -522,12 +528,13 @@ function onKeyMove(e) {
   if (!selJoint.value) return
   const step = snapEnabled.value ? gridStep.value : 5
   const side = editPlane.value === 'left' || editPlane.value === 'right'  // 左右侧视：水平=z；正/背面：水平=x
+  const topView = editPlane.value === 'top' || editPlane.value === 'bottom'  // 俯/仰视：水平面 x/z
   let dx = 0, dy = 0, dz = 0
   switch (e.key) {
     case 'ArrowLeft': side ? (dz = -step) : (dx = -step); break
     case 'ArrowRight': side ? (dz = step) : (dx = step); break
-    case 'ArrowUp': dy = -step; break   // 屏幕上移 = 高度 y 减小（Y-down）
-    case 'ArrowDown': dy = step; break
+    case 'ArrowUp': topView ? (dz = step) : (dy = -step); break   // 俯视：屏幕上移=+z；垂直面：上移=高度 y 减小
+    case 'ArrowDown': topView ? (dz = -step) : (dy = step); break
     default: return
   }
   e.preventDefault()

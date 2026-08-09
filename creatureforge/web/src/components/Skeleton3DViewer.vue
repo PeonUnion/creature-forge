@@ -33,7 +33,7 @@ const props = defineProps({
   fps: { type: Number, default: 6 },
   highlight: { type: String, default: '' },      // 高亮关节（含其后代子树），''=无
   editable: { type: Boolean, default: false },   // 编辑模式：可按住关节/空白拖拽编辑
-  dragPlane: { type: String, default: 'front' }, // 编辑视图：front/back=正/背面(锁z, XY面) / left/right=左右侧视(锁x, YZ面)
+  dragPlane: { type: String, default: 'front' }, // 编辑视图：front/back=正/背面(锁z,XY面) left/right=左右侧视(锁x,YZ面) top/bottom=俯/仰视(锁y,XZ面)
   gridStep: { type: Number, default: 0 },        // 网格吸附步长：>0 显示编辑网格并吸附交叉点，0=自由
 })
 const emit = defineEmits(['ready', 'view', 'pick', 'dragend'])
@@ -381,6 +381,7 @@ function updateEditGrid() {
   if (!props.editable || !(props.gridStep > 0)) return
   const view = props.dragPlane
   const isFront = view === 'front' || view === 'back'   // XY 平面（正/背面）
+  const isSide = view === 'left' || view === 'right'    // YZ 平面（左右侧视）
   const size = Math.max(fitDist * 1.6, 80)
   const div = Math.max(4, Math.round(size / props.gridStep / 2) * 2)
   editGrid = new THREE.GridHelper(size, div, 0x34d399, 0x115e59)
@@ -390,8 +391,9 @@ function updateEditGrid() {
     Math.round(fitTarget.y / props.gridStep) * props.gridStep,
     Math.round(fitTarget.z / props.gridStep) * props.gridStep,
   )
-  if (isFront) editGrid.rotation.x = Math.PI / 2   // → XY 平面（正面/背面）：法线 Y→Z
-  else editGrid.rotation.z = Math.PI / 2           // → YZ 平面（左右侧视）：法线 Y→X（绕 Z 转，绕 Y 无效）
+  if (isFront) editGrid.rotation.x = Math.PI / 2        // → XY 平面：法线 Y→Z
+  else if (isSide) editGrid.rotation.z = Math.PI / 2    // → YZ 平面：法线 Y→X（绕 Z 转，绕 Y 无效）
+  // top/bottom：保持 XZ 水平面（法线 Y），无需旋转
   scene.add(editGrid)
 }
 
