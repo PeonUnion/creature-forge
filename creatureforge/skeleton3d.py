@@ -175,11 +175,16 @@ def build_skeleton_3d(species_id: str = "human", body: dict | None = None,
 
     # 3D 坐标：数值=常量；表达式=计算参数（物种级 params，复用 motion DSL）
     params = _coord_params(species)
+    # 体型参数（param_chains 的 param 名）默认值并入引用空间：动作参数表达式可引用任意体型参数
+    for chain in (species.get("param_chains") or {}).values():
+        pname = chain.get("param") if isinstance(chain, dict) else None
+        if pname and pname not in params:
+            params[pname] = float(chain.get("default", 1.0))
     if body:
-        # 预设 body 可覆盖坐标参数（骨架坐标表达式求值用覆盖后的值）
-        for k in list(params):
-            if body.get(k) is not None:
-                params[k] = float(body[k])
+        # 预设 body 可覆盖坐标参数（骨架坐标表达式求值用覆盖后的值）；
+        # 并把全部体型参数并入引用空间（动作参数表达式可引用 body 参数）
+        for k, v in body.items():
+            params[k] = float(v)
     joints3d: dict[str, list[float]] = {
         j: _resolve_joint_coord(v, params)
         for j, v in default.get("positions_3d", {}).items()
@@ -222,6 +227,7 @@ def build_skeleton_3d(species_id: str = "human", body: dict | None = None,
         "fk_tree": species.get("fk_tree", {}),
         "fk_local": _build_fk_local(joints3d, species.get("fk_tree", {})),
         "constraints": species.get("constraints", {}),
+        "params": params,  # 解析后坐标参数（body 覆盖后）——动作参数表达式可引用
     }
 
 
@@ -532,7 +538,7 @@ def _fk_world_pose(skel3d: dict, motion3d: dict, index: int, params: dict | None
     """当前帧每关节世界变换：{joint: 世界位置} + {joint: 世界旋转3x3} + root 位置。"""
     from creatureforge.motion import _build_signals, _eval, _resolve_params
     ctx = {
-        "params": _resolve_params(motion3d, params),
+        "params": _resolve_params(motion3d, params, refs=skel3d.get("params")),
         "index": index,
         "frame_count": int(motion3d.get("frame_count", 8)),
         "phase": math.tau * (index % int(motion3d.get("frame_count", 8))) / int(motion3d.get("frame_count", 8)),
@@ -653,7 +659,7 @@ def _flip_euler(rx: float, ry: float, rz: float) -> list[float]:
     return [rx2, ry2, rz2]
 
 
-def per_frame_trs(motion3d: dict, params: dict | None = None) -> list[dict]:
+def per_frame_trs(motion3d: dict, params: dict | None = None, refs: dict | None = None) -> list[dict]:
     """动作每帧骨骼 TRS（导出 glTF 动画用）。
 
     返回每帧 {"rot": {关节: [rx,ry,rz]}, "root": [x,y,z]}——
@@ -667,7 +673,7 @@ def per_frame_trs(motion3d: dict, params: dict | None = None) -> list[dict]:
     out = []
     for index in range(n):
         ctx = {
-            "params": _resolve_params(motion3d, params),
+            "params": _resolve_params(motion3d, params, refs=refs),
             "index": index,
             "frame_count": n,
             "phase": math.tau * (index % n) / n,
@@ -698,7 +704,7 @@ def pose_3d(skel3d: dict, motion3d: dict, index: int, params: dict | None = None
     from creatureforge.motion import _build_signals, _eval, _resolve_params
 
     ctx = {
-        "params": _resolve_params(motion3d, params),
+        "params": _resolve_params(motion3d, params, refs=skel3d.get("params")),
         "index": index,
         "frame_count": int(motion3d.get("frame_count", 8)),
         "phase": math.tau * (index % int(motion3d.get("frame_count", 8))) / int(motion3d.get("frame_count", 8)),

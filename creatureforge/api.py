@@ -420,7 +420,7 @@ class ApiService:
                 "fk_tree": {j: p for j, p in (skel3d.get("fk_tree") or {}).items()},
                 "bones": [list(b) for b in skel3d["bones"]],
                 "frames": frames,
-                "trs": per_frame_trs(motion, params=p),  # 每帧骨骼 TRS（导出 glTF 动画）
+                "trs": per_frame_trs(motion, params=p, refs=skel3d.get("params")),  # 每帧骨骼 TRS（导出 glTF 动画）
                 "frame_count": n,
                 "fps": int(motion.get("fps", 6)) or 6,
                 "center": list(skel3d.get("center", (480.0, 300.0, 0.0))),

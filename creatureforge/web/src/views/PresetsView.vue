@@ -71,18 +71,23 @@
         </el-tab-pane>
 
         <el-tab-pane label="🏃 动作幅度" name="actions">
-          <p class="hint">调整各动作幅度（来自动作 JSON params 派生，default 为真实数据值）。</p>
+          <p class="hint">调整各动作幅度（来自动作 JSON params 派生，default 为真实数据值）。可切「表达式」绑定体型/坐标参数（如 <span class="mono">param:overall_scale</span> 或 <span class="mono">mul:shoulder_width*1.2</span>），渲染时求值。</p>
           <div v-for="(a, aid) in schema.actions" :key="aid" class="action-card">
             <div class="action-head"><span>{{ a.title || aid }}</span><span class="mono">{{ aid }}</span></div>
             <div v-if="Object.keys(a.params||{}).length" class="param-grid">
               <div v-for="(spec, pkey) in a.params" :key="pkey" class="param-item">
                 <div class="param-head">
                   <label :title="pkey">{{ spec.label || pkey }}</label>
-                  <span class="val">{{ round((current.actions[aid]||{})[pkey] ?? spec.default) }}</span>
+                  <span class="val">{{ actExprMode[aid + ':' + pkey] ? '🔗 表达式' : actDisplay(aid, pkey, spec) }}</span>
+                  <el-button size="small" text type="primary" @click="toggleActExpr(aid, pkey)">
+                    {{ actExprMode[aid + ':' + pkey] ? '数值' : '表达式' }}
+                  </el-button>
                 </div>
-                <el-slider :min="spec.min" :max="spec.max" :step="spec.step||0.01" :show-tooltip="false"
-                           :model-value="(current.actions[aid]||{})[pkey] ?? spec.default"
-                           @update:model-value="setAction(aid, pkey, $event)" />
+                <el-slider v-if="!actExprMode[aid + ':' + pkey]" :min="spec.min" :max="spec.max" :step="spec.step||0.01" :show-tooltip="false"
+                           :model-value="actNum(aid, pkey, spec)" @update:model-value="setAction(aid, pkey, $event)" />
+                <el-input v-else size="small" :model-value="actExprDraft[aid + ':' + pkey]"
+                          @update:model-value="onActExpr(aid, pkey, $event)"
+                          placeholder="数值 或 param:p / neg:p / mul:p*k / add:p+k" />
               </div>
             </div>
             <span v-else class="no-params">该动作无可调参数（数据驱动，无预设可调项）</span>
@@ -191,6 +196,72 @@ const bodyParamItems = computed(() => {
 })
 
 const round = (v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v)
+
+// -- 动作幅度表达式（与坐标参数化一致：数值=常量，语法 param:p/neg:p/mul:p*k/add:p+k/const:v/JSON=表达式） --
+const actExprMode = ref({})    // {aid:pkey: bool} 表达式输入模式
+const actExprDraft = ref({})   // {aid:pkey: 输入文本}
+
+function parseExpr(s) {
+  s = (s || '').trim()
+  if (!s) return null
+  if (s[0] === '{') { try { return JSON.parse(s) } catch (e) { return null } }
+  if (s.startsWith('const:')) { const v = Number(s.slice(6)); return Number.isFinite(v) ? v : null }
+  if (s.startsWith('param:')) return { param: s.slice(6).trim() }
+  if (s.startsWith('neg:')) return { neg: { param: s.slice(4).trim() } }
+  if (s.startsWith('mul:')) {
+    const [p, k] = s.slice(4).split('*')
+    const kv = Number(k); return (p && Number.isFinite(kv)) ? { mul: [{ param: p.trim() }, { const: kv }] } : null
+  }
+  if (s.startsWith('add:')) {
+    const [p, k] = s.slice(4).split('+')
+    const kv = Number(k); return (p && Number.isFinite(kv)) ? { add: [{ param: p.trim() }, { const: kv }] } : null
+  }
+  const n = Number(s); return Number.isFinite(n) ? n : null
+}
+function exprText(v) {
+  if (typeof v === 'number') return String(v)
+  if (v && typeof v === 'object') {
+    if (v.param) return 'param:' + v.param
+    if (v.neg && v.neg.param) return 'neg:' + v.neg.param
+    if (v.mul && v.mul[0] && v.mul[0].param) return `mul:${v.mul[0].param}*${v.mul[1] ? v.mul[1].const : 1}`
+    if (Array.isArray(v.add)) {
+      const p = v.add.find(x => x && x.param), c = v.add.find(x => x && x.const !== undefined)
+      if (p) return `add:${p.param}+${c ? c.const : 0}`
+    }
+    return JSON.stringify(v)
+  }
+  return String(v)
+}
+function actVal(aid, pkey, spec) {
+  const v = (current.value?.actions?.[aid] || {})[pkey]
+  return v == null ? spec.default : v
+}
+function actNum(aid, pkey, spec) {
+  const v = actVal(aid, pkey, spec)
+  return typeof v === 'number' ? v : spec.default
+}
+function actDisplay(aid, pkey, spec) {
+  const v = actVal(aid, pkey, spec)
+  return typeof v === 'number' ? round(v) : '🔗 表达式'
+}
+function toggleActExpr(aid, pkey) {
+  const k = aid + ':' + pkey
+  const on = !actExprMode.value[k]
+  actExprMode.value[k] = on
+  if (on) {
+    const spec = (schema.value.actions[aid]?.params || {})[pkey] || { default: 1.0 }
+    actExprDraft.value[k] = exprText(actVal(aid, pkey, spec))
+  } else if (typeof actVal(aid, pkey, (schema.value.actions[aid]?.params || {})[pkey] || {}) !== 'number') {
+    // 切回数值模式：表达式值还原为默认（slider 可调）
+    const spec = (schema.value.actions[aid]?.params || {})[pkey] || { default: 1.0 }
+    setAction(aid, pkey, spec.default)
+  }
+}
+function onActExpr(aid, pkey, text) {
+  actExprDraft.value[aid + ':' + pkey] = text
+  const parsed = parseExpr(text)
+  if (parsed !== null) setAction(aid, pkey, parsed)
+}
 
 onMounted(async () => {
   await Promise.all([loadPresets(), loadSpecies(), loadSkins()])

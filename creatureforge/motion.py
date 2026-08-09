@@ -76,14 +76,24 @@ def _build_signals(motion: dict) -> dict:
             for name, expr in defined.items()}
 
 
-def _resolve_params(motion: dict, overrides: dict) -> dict:
-    """解析动作参数：只接受动作 params 里定义的名字（数据驱动，无白名单）。"""
+def _resolve_params(motion: dict, overrides: dict, refs: dict | None = None) -> dict:
+    """解析动作参数：值可为数值（常量）或表达式（dict，复用 _eval DSL）。
+
+    只接受动作 params 里定义的名字（数据驱动，无白名单）。``refs`` 提供额外
+    命名空间（体型/坐标参数），动作参数表达式可引用它以及动作参数自身——
+    例如 preset.actions[id].params = {"intensity": {"mul": [{"param":"head_scale"},
+    {"const":1.2}]}} → 渲染时按当前体型参数求值。
+    """
     defaults = {name: spec.get("default", 0.0)
                 for name, spec in motion.get("params", {}).items()}
     merged = dict(defaults)
     for key, value in (overrides or {}).items():
-        if key in defaults:
-            merged[key] = float(value)
-        else:
+        if key not in defaults:
             raise MotionError(f"unknown motion param: {key}")
+        if isinstance(value, dict):
+            ctx = {"params": {**merged, **(refs or {})},
+                   "index": 0, "frame_count": 1, "phase": 0.0, "signals": {}}
+            merged[key] = float(_eval(value, ctx))
+        else:
+            merged[key] = float(value)
     return merged

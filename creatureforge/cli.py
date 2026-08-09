@@ -66,6 +66,63 @@ def _parse_kv(s: str | None) -> dict:
     return out
 
 
+def _parse_actions(s: str | None) -> dict:
+    """解析动作参数 'aid=param=值,...' → {aid: {param: 值}}。
+
+    值可为数值（常量）或表达式（param:/neg:/mul:/add:/const:/JSON），与
+    坐标参数化一致——动作参数可引用体型/坐标参数，渲染时求值。
+    """
+    out: dict = {}
+    for pair in (s or "").split(","):
+        if not pair.strip():
+            continue
+        parts = pair.split("=", 2)
+        if len(parts) < 3:
+            continue
+        aid, pname, val = (p.strip() for p in parts)
+        expr_prefix = ("param:", "neg:", "mul:", "add:", "const:", "{")
+        out.setdefault(aid, {})[pname] = _parse_expr(val) if val.startswith(expr_prefix) else float(val)
+    return out
+
+
+def _parse_expr(s: str) -> object:
+    """解析坐标/动作参数表达式语法 → 表达式对象（与 Web 坐标参数化一致的 DSL）。
+
+    支持：
+      const:v          → v（常量）
+      param:p          → {"param":"p"}（直接引用）
+      neg:p            → {"neg":{"param":"p"}}（取负）
+      mul:p*k          → {"mul":[{"param":"p"},{"const":k}]}（倍数）
+      add:p+k          → {"add":[{"param":"p"},{"const":k}]}（偏移）
+      {JSON}           → 原样解析（{"add":[{"const":480},{"neg":{"param":"p"}}]} 等）
+    """
+    s = (s or "").strip()
+    if not s:
+        raise ValueError("表达式不能为空")
+    if s.startswith("{"):
+        try:
+            return json.loads(s)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"非法 JSON 表达式: {e}")
+    if s.startswith("const:"):
+        return float(s.split(":", 1)[1])
+    for op, label in (("neg", "取负"), ("mul", "倍数"), ("add", "偏移")):
+        if s.startswith(f"{op}:"):
+            body = s.split(":", 1)[1]
+            if "*" in body:
+                p, _, k = body.partition("*")
+                return {"mul": [{"param": p.strip()}, {"const": float(k.strip())}]}
+            if "+" in body:
+                p, _, k = body.partition("+")
+                return {"add": [{"param": p.strip()}, {"const": float(k.strip())}]}
+            if op == "neg":
+                return {"neg": {"param": body.strip()}}
+            return {"param": body.strip()}
+    if s.startswith("param:"):
+        return {"param": s.split(":", 1)[1].strip()}
+    raise ValueError(f"无法解析表达式: {s!r}（支持 const:v / param:p / neg:p / mul:p*k / add:p+k / JSON）")
+
+
 def _parse_pos(s: str | None) -> list[float] | None:
     """解析 'x,y,z' → [x,y,z]（向导关节/姿态坐标）。"""
     if not s:
@@ -144,6 +201,20 @@ def cmd_species(args) -> None:
         _json(svc.wizard_set_canvas(args.species, width=args.width, height=args.height, floor_y=args.floor_y))
     elif args.sub == "param-add":
         _json(svc.wizard_add_param_chain(args.species, args.name, _parse_list(args.joints), anchor=args.anchor, label=args.label))
+    # -- 坐标参数化（与 Web 一致：数值=常量，表达式=计算参数；对称共享） --
+    elif args.sub == "coord-param":
+        _json(svc.wizard_set_coord_param(
+            args.species, args.name, label=args.label, default=args.default,
+            min=args.min, max=args.max, step=args.step))
+    elif args.sub == "coord-expr":
+        _json(svc.wizard_set_coord_expr(args.species, args.joint, args.axis, _parse_expr(args.expr)))
+    elif args.sub == "coord-extract":
+        _json(svc.wizard_extract_sym_params(args.species, prefix=args.prefix or "sym"))
+    elif args.sub == "coord-apply":
+        data = _load_json_arg(args)
+        _json(svc.wizard_apply_coords(
+            args.species, positions=data.get("positions", data.get("positions_3d")),
+            params=data.get("params")))
     elif args.sub == "wizard-commit":
         print("created:", svc.wizard_commit(args.species))
     elif args.sub == "wizard-discard":
@@ -177,6 +248,9 @@ def cmd_wizard(svc, species_id: str) -> None:
     print("    chain add spine --joints head,neck,chest,pelvis")
     print("    pose set head --pos 480,115,-4")
     print("    param add head_scale --joints head --anchor neck --label 头大小")
+    print("    coord param shoulder_width --label 肩宽 --default 60      ← 坐标参数")
+    print("    coord expr shoulder_left x --expr add:shoulder_width+480   ← 关节轴绑参数")
+    print("    coord extract                                             ← 一键对称提取")
     print("    list · done（提交）· quit（放弃）")
     while True:
         try:
@@ -213,7 +287,7 @@ def cmd_edit(svc, species_id: str) -> None:
         print(f"✗ {e}")
         return
     print(f"✓ 已加载：{v['title']}（关节{v['joint_count']} 骨{v['bone_count']} 链{v['chain_count']} 参数{v['param_chain_count']}）")
-    print("  指令：joint add/rm/rename/parent · mirror · chain add/rm · pose · param · list · done(提交) · quit(放弃)")
+    print("  指令：joint add/rm/rename/parent · mirror · chain add/rm · pose · param · coord(param/expr/extract) · list · done(提交) · quit(放弃)")
     while True:
         try:
             line = input("编辑> ").strip()
@@ -251,6 +325,10 @@ def _wizard_cmd(svc, species_id: str, line: str) -> None:
             if t == name:
                 return args_[i + 1] if i + 1 < len(args_) else None
         return None
+
+    def _optf(name: str) -> float | None:
+        v = opt(name)
+        return float(v) if v is not None else None
 
     def status():
         v = svc.wizard_get(species_id)
@@ -302,13 +380,33 @@ def _wizard_cmd(svc, species_id: str, line: str) -> None:
                                    anchor=opt("--anchor"), label=opt("--label"))
         print(f"  ✓ 参数链 {name}")
         status()
+    elif cmd in ("coord", "co"):
+        sub = args_[0] if args_ else "list"
+        if sub == "param":
+            name = args_[1] if len(args_) > 1 else opt("--name")
+            svc.wizard_set_coord_param(species_id, name, label=opt("--label"),
+                                       default=_optf(opt, "--default"),
+                                       min=_optf(opt, "--min"), max=_optf(opt, "--max"),
+                                       step=_optf(opt, "--step"))
+            print(f"  ✓ 坐标参数 {name}")
+        elif sub == "expr":
+            joint, axis = args_[1], args_[2]
+            svc.wizard_set_coord_expr(species_id, joint, axis, _parse_expr(opt("--expr")))
+            print(f"  ✓ {joint}.{axis} = {opt('--expr')}")
+        elif sub == "extract":
+            svc.wizard_extract_sym_params(species_id, prefix=opt("--prefix") or "sym")
+            print("  ✓ 已提取对称参数")
+        else:
+            v = svc.wizard_get(species_id)
+            print(f"  坐标参数: {json.dumps(v.get('params') or {}, ensure_ascii=False)}")
+        status()
     elif cmd in ("list", "show", "status"):
         v = svc.wizard_get(species_id)
         print(f"  关节: {list(v['nodes'])}")
         print(f"  链: {v['chains']}")
         print(f"  参数链: {list(v['param_chains'])}")
     else:
-        print("  ✗ 未知指令。支持：joint add/rm/rename/parent · mirror · chain add/rm · pose · param · list")
+        print("  ✗ 未知指令。支持：joint add/rm/rename/parent · mirror · chain add/rm · pose · param · coord(param/expr/extract) · list")
 
 
 def cmd_action(args) -> None:
@@ -397,7 +495,7 @@ def cmd_render(args) -> None:
     elif args.mode == "live":
         result = svc.render_preset3d(
             "live", species=args.species, body=_parse_kv(args.body) or None,
-            actions=_parse_kv(args.actions) or None, action_id=args.action,
+            actions=_parse_actions(args.actions) or None, action_id=args.action,
             yaw=args.yaw, pitch=args.pitch, dist=args.dist,
             pan_x=args.pan_x, pan_y=args.pan_y, grid=args.grid, gif=args.gif)
         if "gif" in result:
@@ -466,6 +564,19 @@ def build_parser() -> argparse.ArgumentParser:
     w1.add_argument("--width", type=float); w1.add_argument("--height", type=float); w1.add_argument("--floor-y", type=float)
     w1 = ssp.add_parser("param-add"); w1.add_argument("species"); w1.add_argument("name")
     w1.add_argument("--joints", required=True, help="逗号分隔关节"); w1.add_argument("--anchor"); w1.add_argument("--label")
+    # -- 坐标参数化（数值=常量，表达式=计算参数；对称共享；与 Web 一致） --
+    c1 = ssp.add_parser("coord-param", help="定义/更新坐标参数（引用名+label+默认值）")
+    c1.add_argument("species"); c1.add_argument("name")
+    c1.add_argument("--label"); c1.add_argument("--default", type=float)
+    c1.add_argument("--min", type=float); c1.add_argument("--max", type=float); c1.add_argument("--step", type=float)
+    c1 = ssp.add_parser("coord-expr", help="设置关节某轴表达式（绑定参数/常量）")
+    c1.add_argument("species"); c1.add_argument("joint"); c1.add_argument("axis", choices=["x", "y", "z"])
+    c1.add_argument("--expr", required=True,
+                    help="const:v / param:p / neg:p / mul:p*k / add:p+k / 或 JSON 表达式")
+    c1 = ssp.add_parser("coord-extract", help="对称参数提取：相同/中心互补/相反 → 共享参数")
+    c1.add_argument("species"); c1.add_argument("--prefix", default="sym")
+    c1 = ssp.add_parser("coord-apply", help="整体写坐标+参数（--json 或 --file 传 {positions,params}）")
+    c1.add_argument("species"); c1.add_argument("--json"); c1.add_argument("--file")
     w1 = ssp.add_parser("wizard-commit"); w1.add_argument("species")
     w1 = ssp.add_parser("wizard-discard"); w1.add_argument("species")
 
@@ -511,7 +622,8 @@ def build_parser() -> argparse.ArgumentParser:
     r1 = rsub.add_parser("preset"); r1.add_argument("id", help="preset id")
     r1.add_argument("--action", help="动作 id（省略渲染骨架）"); _add_render_opts(r1)
     r1 = rsub.add_parser("live"); r1.add_argument("--species", required=True)
-    r1.add_argument("--body", help="体型参数 a=1,b=2"); r1.add_argument("--actions", help="动作参数 walk3d=intensity=1.2")
+    r1.add_argument("--body", help="体型参数 a=1,b=2")
+    r1.add_argument("--actions", help="动作参数 aid=param=值（值可数值或表达式 param:p/neg:p/mul:p*k/add:p+k）")
     r1.add_argument("--action", help="动作 id"); _add_render_opts(r1)
     r1 = rsub.add_parser("skin"); r1.add_argument("id", help="action id")
     r1.add_argument("--species", help="限定物种")
