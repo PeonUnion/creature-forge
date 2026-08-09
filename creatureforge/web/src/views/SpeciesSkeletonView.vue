@@ -29,11 +29,12 @@
               <div class="edit-plane-bar">
                 <span class="plane-label">编辑</span>
                 <el-radio-group v-model="editPlane" size="small">
-                  <el-radio-button value="xz">(X,Z) 水平</el-radio-button>
-                  <el-radio-button value="yz">(Y,Z) 侧视</el-radio-button>
+                  <el-radio-button value="xz">(X,Z) 俯视·水平面</el-radio-button>
+                  <el-radio-button value="yz">(Y,Z) 侧视·垂直面</el-radio-button>
                 </el-radio-group>
                 <el-switch v-model="snapEnabled" size="small" active-text="网格" inactive-text="自由" />
                 <el-input-number v-model="gridStep" size="small" :min="1" :max="100" :disabled="!snapEnabled" style="width: 96px" />
+                <span class="plane-legend">x 左右 · y 上下(高度) · z 前后(纵深)</span>
                 <span class="plane-hint">落点吸附网格交叉点</span>
               </div>
               <Skeleton3DViewer v-if="preview" :joints="preview.joints" :bones="preview.bones"
@@ -572,8 +573,7 @@ async function save() {
 .hint { color: #909399; font-size: .82rem; margin: 0 0 12px; }
 .dirty-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f56c6c; margin-left: 6px; vertical-align: middle; }
 .edit-plane-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #f7f9fc; border-bottom: 1px solid #ebeef5; flex-wrap: wrap; }
-.plane-label { font-size: .76rem; color: #606266; font-weight: 600; }
-.plane-hint { font-size: .72rem; color: #909399; margin-left: auto; }
+.plane-label { font-size: .76rem; color: #606266; font-weight: 600; }.plane-legend { font-size: .72rem; color: #67c23a; font-family: monospace; }.plane-hint { font-size: .72rem; color: #909399; margin-left: auto; }
 .wiz-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .wiz-layout .full { grid-column: 1 / -1; }
 .wiz-preview { border-radius: 8px; overflow: hidden; border: 1px solid #111827; min-height: 420px; }
