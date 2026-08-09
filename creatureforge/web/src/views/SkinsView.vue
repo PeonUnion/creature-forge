@@ -154,7 +154,7 @@
           <div class="preview-controls">
             <CameraControls v-model="cam" />
             <el-select v-model="previewAction" placeholder="选择动作" clearable filterable style="width: 170px">
-              <el-option v-for="a in actions" :key="a" :label="actionTitle(a)" :value="a" />
+              <el-option v-for="(a, aid) in previewActions" :key="aid" :label="a.title || aid" :value="aid" />
             </el-select>
             <span class="hint">胖瘦因子 {{ round(bodyScale) }}</span>
           </div>
@@ -191,8 +191,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import CameraControls from '../components/CameraControls.vue'
 import SkinnedViewer from '../components/SkinnedViewer.vue'
 
-const actions = ['walk3d', 'run3d', 'jump3d', 'crawl3d', 'idle3d']
-const actionTitle = (id) => ({ walk3d: 'Walk', run3d: 'Run', jump3d: 'Jump', crawl3d: 'Crawl', idle3d: 'Idle' }[id] || id)
 const predefColors = ['#c9a58c', '#8a5a3a', '#5d8a3a', '#6b8a5a', '#d8b8a0', '#b06a4a', '#3a6b8a', '#c9c9c9']
 
 const loading = ref(true)
@@ -248,6 +246,30 @@ async function loadPresets() {
   catch (e) { ElMessage.error('加载预设失败: ' + e.message) }
 }
 
+// -- 预览动作：来自皮肤所基于的预设（预设已选动作优先，否则物种全部动作）--
+const presetActions = ref({})   // 预设已选动作 {aid: {title, params}}
+const speciesActions = ref({})  // 物种全部动作 {aid: {title, params}}
+const previewActions = computed(() => {
+  const picked = Object.keys(presetActions.value)
+  if (picked.length) return presetActions.value
+  return speciesActions.value
+})
+async function loadPresetActions(presetId) {
+  presetActions.value = {}
+  speciesActions.value = {}
+  if (!presetId) return
+  try {
+    const d = await api.presetDetail(presetId)
+    const all = d.schema_info?.actions || {}
+    speciesActions.value = all
+    const picked = {}
+    for (const aid of Object.keys(d.actions || {})) {
+      picked[aid] = all[aid] || { title: aid, params: {} }
+    }
+    presetActions.value = picked
+  } catch (e) { /* 预设详情不可用 → 保持空，预览回退骨架 */ }
+}
+
 async function openSkin(s) {
   creating.value = false
   isNew.value = false
@@ -256,6 +278,7 @@ async function openSkin(s) {
     tab.value = 'params'
     previewAction.value = ''
     previewData.value = null
+    await loadPresetActions(current.value?.preset)
     await loadBones()
   } catch (e) { ElMessage.error(e.message) }
 }
@@ -271,11 +294,12 @@ async function initNew() {
     tab.value = 'params'
     previewAction.value = ''
     current.value.parts = current.value.parts || []
+    await loadPresetActions(current.value?.preset)
     await loadBones()
   } catch (e) { ElMessage.error(e.message) }
 }
 
-function close() { current.value = null; isNew.value = false; previewData.value = null }
+function close() { current.value = null; isNew.value = false; previewData.value = null; presetActions.value = {}; speciesActions.value = {} }
 
 async function save() {
   if (!current.value?.skin_id) { ElMessage.warning('皮肤 ID 不能为空'); return }
