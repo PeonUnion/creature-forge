@@ -30,10 +30,17 @@ test.describe('预设管理（全量 E2E）', () => {
     await page.mouse.click(hb.x + hb.width * 0.8, hb.y + hb.height / 2)
     await expect(page.locator('.param-item', { hasText: '头大小' }).locator('.val')).toHaveText(/.+/)
 
-    // 动作幅度 tab
-    await page.locator('.el-tabs__item', { hasText: '动作幅度' }).click()
-    await expect(page.locator('.action-card', { hasText: 'walk3d' })).toBeVisible()
-    await expect(page.locator('.action-card', { hasText: 'Walk 3D' })).toBeVisible()
+    // 动作管理 tab：从物种动作中选择添加 → 表格 → 配置详情
+    await page.locator('.el-tabs__item', { hasText: '动作管理' }).click()
+    await expect(page.locator('.act-table + .empty-inline', { hasText: '尚未添加动作' })).toBeVisible()
+    await page.locator('.act-toolbar .el-select').click()
+    await page.locator('.el-select-dropdown__item', { hasText: 'walk3d' }).last()
+      .evaluate((el) => el.click())
+    await page.locator('.act-toolbar button', { hasText: '添加动作' }).click()
+    await expect(page.locator('.act-table .el-table__row', { hasText: 'walk3d' })).toBeVisible()
+    await page.locator('.act-table .el-table__row', { hasText: 'walk3d' })
+      .getByRole('button', { name: '配置' }).click()
+    await expect(page.locator('.act-detail', { hasText: 'Walk 3D' })).toBeVisible()
 
     // 预览 tab：骨架实时渲染（限定可见 canvas，避开非激活 tab）
     await page.locator('.el-tabs__item', { hasText: '预览' }).click()

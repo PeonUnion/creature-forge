@@ -70,23 +70,53 @@
           <div v-else class="preview-empty"><p>该物种没有体型参数</p></div>
         </el-tab-pane>
 
-        <el-tab-pane label="🏃 动作幅度" name="actions">
-          <p class="hint">调整各动作幅度（来自动作 JSON params 派生，default 为真实数据值）。可切「表达式」绑定体型/坐标参数（如 <span class="mono">param:overall_scale</span> 或 <span class="mono">mul:shoulder_width*1.2</span>），渲染时求值。</p>
-          <div v-for="(a, aid) in schema.actions" :key="aid" class="action-card">
-            <div class="action-head"><span>{{ a.title || aid }}</span><span class="mono">{{ aid }}</span></div>
-            <div v-if="Object.keys(a.params||{}).length" class="param-grid">
-              <div v-for="(spec, pkey) in a.params" :key="pkey" class="param-item">
+        <el-tab-pane label="🏃 动作管理" name="actions">
+          <p class="hint">动作与骨骼参数（体型）相对独立：从来源物种的动作中**选择添加**到本预设，每个动作独立配置参数（幅度/表达式，渲染时求值）。</p>
+          <!-- 工具栏：从物种动作中选择添加 -->
+          <div class="act-toolbar">
+            <el-select v-model="addActionId" placeholder="从物种动作中选择…" filterable clearable style="width: 250px">
+              <el-option v-for="(a, aid) in availableActions" :key="aid" :label="`${a.title || aid} (${aid})`" :value="aid" />
+            </el-select>
+            <el-button type="primary" size="small" :disabled="!addActionId" @click="addAction">添加动作</el-button>
+            <span class="hint" v-if="!Object.keys(availableActions).length">已添加物种全部动作</span>
+          </div>
+          <!-- 动作表格：本预设已选动作 -->
+          <el-table :data="presetActionRows" size="small" border class="act-table">
+            <el-table-column label="动作" min-width="180">
+              <template #default="{row}">
+                <span class="cell-title">{{ row.title }}</span><span class="cell-id mono">{{ row.aid }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="参数" width="90" align="center">
+              <template #default="{row}"><span>{{ row.paramsCount }}</span></template>
+            </el-table-column>
+            <el-table-column label="操作" width="180" align="center">
+              <template #default="{row}">
+                <el-button size="small" text type="primary" @click="openActionDetail(row.aid)">配置</el-button>
+                <el-button size="small" text type="danger" @click="removeAction(row.aid)">移除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div v-if="!presetActionRows.length" class="empty-inline">预设尚未添加动作：从上方物种动作中选择添加（非默认全部）</div>
+          <!-- 动作详情：选中动作的参数配置 -->
+          <div v-if="actDetail" class="act-detail">
+            <div class="act-detail-head">
+              <span class="cell-title">{{ actDetail.title }}</span><span class="cell-id mono">{{ actDetail.aid }}</span>
+              <el-button size="small" text @click="actDetail = null">关闭详情</el-button>
+            </div>
+            <div v-if="Object.keys(actDetail.params||{}).length" class="param-grid">
+              <div v-for="(spec, pkey) in actDetail.params" :key="pkey" class="param-item">
                 <div class="param-head">
                   <label :title="pkey">{{ spec.label || pkey }}</label>
-                  <span class="val">{{ actExprMode[aid + ':' + pkey] ? '🔗 表达式' : actDisplay(aid, pkey, spec) }}</span>
-                  <el-button size="small" text type="primary" @click="toggleActExpr(aid, pkey)">
-                    {{ actExprMode[aid + ':' + pkey] ? '数值' : '表达式' }}
+                  <span class="val">{{ actExprMode[actDetail.aid + ':' + pkey] ? '🔗 表达式' : actDisplay(actDetail.aid, pkey, spec) }}</span>
+                  <el-button size="small" text type="primary" @click="toggleActExpr(actDetail.aid, pkey)">
+                    {{ actExprMode[actDetail.aid + ':' + pkey] ? '数值' : '表达式' }}
                   </el-button>
                 </div>
-                <el-slider v-if="!actExprMode[aid + ':' + pkey]" :min="spec.min" :max="spec.max" :step="spec.step||0.01" :show-tooltip="false"
-                           :model-value="actNum(aid, pkey, spec)" @update:model-value="setAction(aid, pkey, $event)" />
-                <el-input v-else size="small" :model-value="actExprDraft[aid + ':' + pkey]"
-                          @update:model-value="onActExpr(aid, pkey, $event)"
+                <el-slider v-if="!actExprMode[actDetail.aid + ':' + pkey]" :min="spec.min" :max="spec.max" :step="spec.step||0.01" :show-tooltip="false"
+                           :model-value="actNum(actDetail.aid, pkey, spec)" @update:model-value="setAction(actDetail.aid, pkey, $event)" />
+                <el-input v-else size="small" :model-value="actExprDraft[actDetail.aid + ':' + pkey]"
+                          @update:model-value="onActExpr(actDetail.aid, pkey, $event)"
                           placeholder="数值 或 param:p / neg:p / mul:p*k / add:p+k" />
               </div>
             </div>
@@ -194,6 +224,45 @@ const bodyParamItems = computed(() => {
     step: spec.step || 0.01, def: spec.default ?? 1.0,
   }))
 })
+
+// -- 动作管理：预设从物种动作中选择添加（与骨骼参数相对独立），表格 + 详情 --
+const addActionId = ref('')
+const actDetail = ref(null)  // 详情：{ aid, title, params(schema) }
+const availableActions = computed(() => {
+  const all = schema.value.actions || {}
+  const picked = new Set(Object.keys(current.value?.actions || {}))
+  return Object.fromEntries(Object.entries(all).filter(([aid]) => !picked.has(aid)))
+})
+const presetActionRows = computed(() => {
+  const all = schema.value.actions || {}
+  return Object.keys(current.value?.actions || {}).map(aid => ({
+    aid,
+    title: all[aid]?.title || aid,
+    paramsCount: Object.keys(all[aid]?.params || {}).length,
+  }))
+})
+function addAction() {
+  if (!current.value || !addActionId.value) return
+  current.value.actions = { ...(current.value.actions || {}), [addActionId.value]: {} }
+  addActionId.value = ''
+}
+function removeAction(aid) {
+  if (!current.value) return
+  const next = { ...(current.value.actions || {}) }
+  delete next[aid]
+  current.value.actions = next
+  if (actDetail.value?.aid === aid) actDetail.value = null
+}
+function openActionDetail(aid) {
+  const all = schema.value.actions || {}
+  actDetail.value = { aid, title: all[aid]?.title || aid, params: (all[aid]?.params) || {} }
+}
+watch([() => current.value?.actions], () => {
+  // 详情对应动作被移除时自动关闭
+  if (actDetail.value && current.value && !(actDetail.value.aid in (current.value.actions || {}))) {
+    actDetail.value = null
+  }
+}, { deep: true })
 
 const round = (v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v)
 
@@ -469,6 +538,13 @@ onBeforeUnmount(() => {
 .action-card { border: 1px solid #ebeef5; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; background: #fafbfc; }
 .action-head { display: flex; justify-content: space-between; margin-bottom: 8px; font-weight: 600; font-size: .85rem; }
 .no-params { color: #909399; font-size: .78rem; }
+.empty-inline { padding: 24px; text-align: center; color: #c0c4cc; }
+.act-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.act-toolbar .hint { margin: 0; }
+.act-table { margin-bottom: 12px; }
+.act-detail { border: 1px solid #c6e2ff; border-radius: 8px; padding: 12px 14px; background: #f0f7ff; }
+.act-detail-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.act-detail-head .el-button { margin-left: auto; }
 .preview-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
 .preview-empty { border: 1px dashed #d9d9d9; border-radius: 8px; min-height: 260px; display: flex; align-items: center; justify-content: center; color: #c0c4cc; }
 .hint { color: #909399; font-size: .82rem; margin: 0 0 12px; }

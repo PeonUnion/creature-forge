@@ -96,7 +96,11 @@ class PresetService:
         return {**preset, "schema_info": schema}
 
     def new_schema(self, species_id: str) -> dict:
-        """新建预设的空白表单：值 = 物种默认 + 完整 schema。"""
+        """新建预设的空白表单：值 = 物种默认 + 完整 schema。
+
+        actions 默认为空集——预设从来源物种的动作中**选择添加**（非默认全部），
+        通过「动作管理」从 schema.actions 挑选；动作与骨骼参数（body）相对独立。
+        """
         schema = self.build_preset_schema(species_id)
         return {
             "schema": PRESET_SCHEMA,
@@ -105,7 +109,7 @@ class PresetService:
             "title": "",
             "description": "",
             "body": dict(schema["default_body"]),
-            "actions": {aid: {} for aid in schema["actions"]},
+            "actions": {},
             "schema_info": schema,
         }
 
