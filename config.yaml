@@ -1,0 +1,15 @@
+# CreatureForge Go backend configuration
+# 配置：spf13/viper 读取 YAML；环境变量 CFG_<KEY> 覆盖（如 CFG_SERVER_PORT=9000）
+
+server:
+  host: 127.0.0.1
+  port: 8765
+  dev: true
+
+data:
+  root: ./data
+
+log:
+  level: info
+  format: console
+  output: ""        # ""(stdout) | stderr | 文件路径
