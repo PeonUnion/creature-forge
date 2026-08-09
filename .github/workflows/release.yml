@@ -1,18 +1,16 @@
 # ============================================================================
-# CreatureForge 跨平台二进制发布
+# CreatureForge 跨平台二进制发布（Go 全量迁移版）
 # ----------------------------------------------------------------------------
 # 触发：
-#   - push tag v*（如 v0.3.0 / v0.3.1 / v0.4.0 / v1.0.0-rc.1）→ 构建 + GitHub Release
+#   - push tag v*（如 v0.1.0 / v1.0.0-rc.1）→ 构建 + GitHub Release
 #   - workflow_dispatch（手动）→ 仅构建验证（不上传 Release）
 #
-# 版本语义（SemVer 2.0.0）：
-#   - MAJOR.MINOR.PATCH 由 tag 决定（v*），workflow 不自动 bump
-#   - 预发布后缀 -alpha/-beta/-rc → 自动标记为 GitHub Pre-release（预览版）
-#   - 变更日志：Keep a Changelog（CHANGELOG.md），按 tag 提取对应版本块作为 Release Notes
+# 产物（每平台，Go 单二进制）：
+#   creature-forge-server-<ver>-<platform>[.exe]  — HTTP server（//go:embed Vue 前端）
+#   creature-forge-cli-<ver>-<platform>[.exe]     — 命令行工具（不含前端）
 #
-# 产物（每平台）：
-#   creature-forge-server-<ver>[.exe]  — HTTP server（嵌入 Vue 前端 + 物种数据）
-#   creature-forge-cli-<ver>[.exe]     — 命令行工具（嵌入物种数据）
+# 版本语义（SemVer 2.0.0）：tag v* 决定版本；预发布后缀 -alpha/-beta/-rc → Pre-release。
+# Release Notes 由 git 历史自动生成（Conventional Commits 按 Added/Fixed/Changed 分组）。
 # ============================================================================
 
 name: Release Binaries
@@ -24,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '构建版本号（如 0.3.0 或 0.3.0-rc.1；仅用于验证，不影响 tag）'
+        description: '构建版本号（仅用于验证，不影响 tag）'
         required: false
 
 permissions:
@@ -38,23 +36,30 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            py: '3.12'
+            goos: linux
+            goarch: amd64
             label: linux-x64
+            ext: ''
           - os: windows-latest
-            py: '3.12'
+            goos: windows
+            goarch: amd64
             label: windows-x64
+            ext: '.exe'
           - os: macos-14
-            py: '3.12'
+            goos: darwin
+            goarch: arm64
             label: macos-arm64
+            ext: ''
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-go@v5
         with:
-          python-version: ${{ matrix.py }}
+          go-version: '1.23'
+          cache-dependency-path: gocore/go.sum
 
-      # 先装 pnpm（官方 action，读 packageManager pnpm@11.8.0），setup-node 的 cache: pnpm 才找得到
+      # 先装 pnpm（官方 action，读 packageManager pnpm@11.8.0）
       - uses: pnpm/action-setup@v4
         with:
           version: 11.8.0
@@ -73,16 +78,25 @@ jobs:
         working-directory: creatureforge/web
         run: pnpm build
 
-      - name: Install pyinstaller
-        run: pip install pyinstaller
+      - name: Sync frontend into Go embed (gocore/internal/server/static)
+        shell: bash
+        run: |
+          STATIC="gocore/internal/server/static"
+          rm -rf "$STATIC"
+          mkdir -p "$STATIC"
+          cp -r creatureforge/web/dist/. "$STATIC/"
 
-      - name: Build server & cli binaries
+      - name: Build Go binaries (server embed frontend / cli without)
+        shell: bash
         env:
-          # 版本号：tag 触发用 tag（v*）；手动触发用输入值，默认 dev
-          ASSETSLAB_VERSION: ${{ github.ref_name }}
-          # 平台+架构后缀（保证三平台产物名不冲突）：linux-x64 / windows-x64 / macos-arm64
-          ASSETSLAB_PLATFORM: ${{ matrix.label }}
-        run: python scripts/build_release.py
+          VER: ${{ github.ref_name }}
+          PLATFORM: ${{ matrix.label }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p dist
+          (cd gocore && go build -trimpath -o "../dist/creature-forge-server-${VER}-${PLATFORM}${{ matrix.ext }}" ./cmd/gocore-server)
+          (cd gocore && go build -trimpath -o "../dist/creature-forge-cli-${VER}-${PLATFORM}${{ matrix.ext }}" ./cmd/gocore)
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -99,7 +113,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # 完整历史：预发布（rc/beta/alpha）在 CHANGELOG 无条目时，用 git log 生成 commit 总结
           fetch-depth: 0
 
       - name: Download all artifacts
@@ -108,23 +121,29 @@ jobs:
           path: release/
           merge-multiple: true
 
-      - name: Generate release notes (from git log via gen_changelog.py)
+      - name: Generate release notes (from git log, Conventional Commits)
         shell: bash
         run: |
           VER="${GITHUB_REF_NAME#v}"
-          # 结构化 Release Notes：Conventional Commits 按 tag 区间分组（Added/Fixed/Changed），无需维护 CHANGELOG
-          python scripts/gen_changelog.py --tag "v${VER}" --raw > release-body.md 2>/dev/null || true
+          prev="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}~1" 2>/dev/null || true)"
+          rng="${prev:+$prev..}${GITHUB_REF_NAME}"
+          {
+            echo "## What's Changed"
+            echo
+            echo '### Added'
+            git log --no-merges --pretty=format:%s "$rng" | grep -E '^feat' | sed 's/^/- /'
+            echo
+            echo '### Fixed'
+            git log --no-merges --pretty=format:%s "$rng" | grep -E '^fix' | sed 's/^/- /'
+            echo
+            echo '### Changed'
+            git log --no-merges --pretty=format:%s "$rng" | grep -E '^(refactor|perf|chore|docs|style|build)' | sed 's/^/- /'
+          } > release-body.md
           if [ ! -s release-body.md ]; then
-            # 兜底：纯 commit 列表（非 Conventional 提交 / 异常时）
-            ref="v${VER}"
-            prev="$(git describe --tags --abbrev=0 "$ref~1" 2>/dev/null || true)"
-            rng="${prev:+$prev..}$ref"
             git log --no-merges --pretty=format:%s "$rng" | sed '/^$/d' | sed 's/^/- /' > release-body.md
           fi
           echo "Release body 行数: $(wc -l < release-body.md)"
 
-      # 反复重推同 tag 会产生重复 release/draft → GitHub API 拒绝 update（already_exists）。
-      # 创建前先删除同 tag 的全部 release 与 draft（保留 tag 本身），确保每次干净重建。
       - name: Delete existing releases for this tag (incl. drafts)
         shell: bash
         env:

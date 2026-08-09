@@ -18,11 +18,11 @@ export default defineConfig({
   },
   webServer: [
     {
-      // 后端 API（dev 模式：CORS + 默认 8765，数据目录用 test-data/，测试不污染真实 data/）
-      command: '../../.venv/bin/python ../server.py --dev --port 8765 --data-dir ../../test-data',
+      // 后端 API（Go gocore-server，dev 模式：CORS + 默认 8765，数据目录用 test-data/，测试不污染真实 data/）
+      command: 'cd ../../gocore && go run ./cmd/gocore-server --dev --port 8765 --data-dir ../../test-data',
       url: 'http://127.0.0.1:8765/api/species',
       reuseExistingServer: true,
-      timeout: 60_000,
+      timeout: 90_000,
     },
     {
       // 前端 Vite dev（proxy /api → 8765）

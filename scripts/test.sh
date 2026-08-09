@@ -1,23 +1,19 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 全量测试：3D 动作验证 + CLI 流程化测试 + 前端 E2E
+# 全量测试：Go 单测 + 一致性 + 前端 E2E
 # 用法: ./scripts/test.sh
 # =============================================================================
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-PY="$ROOT/.venv/bin/python"
+GO="${GO:-go}"
 
-echo "=== [1/3] 3D 动作验证 (verify_motions3d) ==="
-"$PY" "$ROOT/scripts/verify_motions3d.py"
-
-echo
-echo "=== [2/3] CLI 流程化测试 (test_cli) ==="
-"$PY" "$ROOT/scripts/test_cli.py"
+echo "=== [1/2] Go 全量测试（expr/skeleton/store/server/render/config/logging）==="
+( cd "$ROOT/gocore" && "$GO" vet ./... && "$GO" test ./... )
 
 echo
-echo "=== [3/3] 前端 E2E (playwright) ==="
+echo "=== [2/2] 前端 E2E (playwright) ==="
 ( cd "$ROOT/creatureforge/web" && pnpm test:e2e )
 
 echo

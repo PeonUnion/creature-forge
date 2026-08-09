@@ -1,151 +1,100 @@
-# CreatureForge — 数据驱动角色素材管线
+# CreatureForge — 数据驱动角色素材管线（Go 全量迁移）
 
-数据驱动角色管线：3D 动作引擎 + 物种/预设 + CLI/HTTP 双入口 + Web 前端预览 + Godot demo。
+数据驱动角色管线：3D 动作引擎 + 物种/预设 + CLI/HTTP 双入口 + Web 前端（embed 进 server）+ Godot demo。
 
-## 类型声明
+**核心原则（强制）**：数据始终在外部 JSON（`data/`），代码只做引擎处理，**不硬编码任何数据**。
 
-`creatureforge/models.py` — Python TypedDict 类型声明，面向人类和 AI 的可读文档。
-定义了 Species → Preset → Motion 三层数据模型及所有 API 响应类型。
-
-## 统一 Api（CLI 与 HTTP 共享同一套接口，避免两侧漂移）
-
-- `creatureforge/interfaces.py` — `Api`（Protocol，`@runtime_checkable`）：统一接口契约。**新增任何操作必须先在此声明**，两侧（CLI/HTTP）自动一致。
-- `creatureforge/api.py` — `ApiService`：唯一实现（组合物种 + 预设 + 3D 渲染）。`make_api()` 返回时 `assert isinstance(service, Api)` 运行时硬约束。
-- `creatureforge/server.py` — HTTP handler 只依赖 `Api`（薄路由层，无业务/渲染逻辑）。
-- `creatureforge/cli.py` — CLI 直接实例化 `ApiService`（`python -m creatureforge.cli`，不启动 server）。
-
-## 存储结构
+## 架构分层（Go）
 
 ```
-creatureforge/
-  api.py / interfaces.py / cli.py / server.py   ← 统一 Api + HTTP + CLI
-  species.py / presets.py / models.py / motion.py
-  skeleton3d.py / render.py                      ← 3D 引擎 + 绘制原语
-  species/                    ← 物种（文件夹式，细颗粒度管理）
-    human/
-      skeleton.json           ← 骨骼拓扑：关节、骨骼、链、参数链、约束
-      preset_schema.json      ← 预设 schema（随骨架自动派生）
-      default.json            ← 默认姿态/体型（positions_3d 按真实 CMU 重建）
-      actions3d/*.json   ← 3D 动作（FK 关节旋转，真实 CMU 数据：walk/run/jump/crawl/idle）
-      skin/
-        mesh.json             ← 蒙皮网格（人形胶囊网格：顶点 + 面）
-        weights.json          ← 蒙皮权重（顶点 → 骨骼）
-        skin_params.json      ← 皮肤参数 schema（skin_tone / fat / muscle）+ 默认材质
-  presets/                    ← 预设（物种实例：体型 + 动作幅度）
-    <preset_id>.json          ← {species, body, actions}（schema 由物种派生，不落盘）
-  skins/                      ← 皮肤（基于预设的实例：基底材质/参数 + 部件集合，可多实例）
-    <skin_id>.json            ← {preset, materials, params, parts}（schema 由预设物种 skin_params 派生）
-    assets/<skin_id>/<part>/  ← 部件资产（画师上传的网格 .glb/.obj/.json + 贴图图片）
-  templates/                  ← 形态模板（分步向导起步：humanoid/custom…，数据驱动可扩展，不预设人形）
-  web/                        ← Vue 3 前端（物种 / 预设 / 皮肤 独立入口 + 物种分步向导）
-scripts/
-  mocap/                      ← CMU 动捕工具链（bvh_parser / rebuild_skeleton_cmu / ...）
-  verify_motions3d.py         ← 3D 动作验证（8 项检查，数据驱动）
-prototype/                    ← Godot 4.7 demo（保留）
+gocore/
+  expr/                    ← 动作表达式 DSL（const/param/phase/index/frame_count/signal/
+                               sin/cos/neg/rect/abs/add/sub/mul/table）——镜像原 motion.py
+  skeleton/                ← 3D 引擎：BuildSkeleton / Pose / FKWorldPose / SkinnedVertices
+                               （镜像原 skeleton3d.py；与 Python golden 逐顶点一致 + 基准 16×）
+  internal/store/          ← 数据层：完整领域模型（Species/Default/Preset/Skin/Motion/Baked）
+                               + JSON CRUD（species/presets/skins/actions）+ 引擎转换
+  internal/server/         ← HTTP API 路由（镜像原 server.py 全部契约）
+                               + //go:embed static/（前端构建产物）
+  internal/render/         ← 渲染：轨道相机透视投影 + 地面网格 + 骨架绘制（标准库替代 Pillow）
+  internal/logging/        ← zap 自封装（Level/Format/Output）
+  internal/config/         ← viper 读 config.yaml + CFG_ 环境变量覆盖
+  cmd/gocore-server/       ← HTTP server（embed 前端，单二进制）
+  cmd/gocore/              ← CLI（不含前端）
 ```
 
-## API（HTTP：handler 薄路由 → ApiService）
+## 数据模型（外部 JSON，`data/`）
+
+| 文件 | 说明 |
+|---|---|
+| `data/species/<id>/skeleton.json` | 骨骼拓扑：joints / chains / param_chains / params / bones_3d / fk_tree / constraints |
+| `data/species/<id>/default.json` | 默认姿态/体型：positions_3d / canvas / body（CMU 真实体型） |
+| `data/species/<id>/preset_schema.json` | 预设 schema（随骨架自动派生，数据驱动） |
+| `data/species/<id>/actions3d/*.json` | 3D 动作（fk3d 旋转 + root3d 根位移，真实 CMU 数据） |
+| `data/species/<id>/skin/` | 蒙皮基底（mesh.json / weights.json / skin_params.json） |
+| `data/presets/<id>.json` | 预设（物种实例：body + actions + baked 固化骨架） |
+| `data/skins/<id>.json` | 皮肤（预设实例：materials + params + parts） |
+| `data/templates/` | 形态模板（humanoid / custom 从 0 开始） |
+
+## HTTP API（`gocore-server`，契约与原 Python server 一致）
 
 | 端点 | 说明 |
 |---|---|
 | `GET /api/species` | 物种列表 |
 | `GET /api/species/<id>` | 物种详情（骨架 + 动作） |
 | `POST/PUT/DELETE /api/species...` | 物种 CRUD + `preset_schema` / `default` / `actions` |
-| `GET /api/presets` | 预设列表 |
-| `GET /api/presets/new?species=` | 新建空白表单（含 schema） |
-| `GET/POST/PUT/DELETE /api/presets...` | 预设 CRUD |
-| `GET /api/skins` | 皮肤列表 |
-| `GET /api/skins/new?preset=` | 新建空白皮肤表单（基于预设，含 schema） |
-| `GET/POST/PUT/DELETE /api/skins...` | 皮肤 CRUD + 部件 CRUD（`<id>/parts...`）+ 部件上传（`<id>/parts/<p>/mesh|texture`） |
-| `GET /api/templates` | 形态模板列表（可选起步，含 custom 从 0 开始） |
-| `GET /api/wizard/<id>` | 物种向导草稿视图 |
-| `POST /api/wizard/<id>/<action>` | 分步操作：`init / joint/add|rm|rename|parent / limb/mirror / chain/add|rm / pose/set / canvas / param/add / commit / discard` |
-| `GET /api/skin3d/<action>` | 蒙皮数据（网格 + 帧 + trs + 权重 + 绑定姿态 + 部件） |
-| `GET /api/skin3d/export/<action>?preset=&skin_id=` | 导出 .glb（基底 + 部件 + 动作动画） |
-| `GET /api/motions3d` | 跨物种动作列表 |
-| `GET /api/skeleton3d/<id>?yaw=45` | 3D 骨架 PNG（支持体型参数） |
-| `GET /api/motion3d/<id>?gif=1` | 3D 动作 PNG / GIF / frames |
-| `GET /api/preset3d/<id>` | 预设渲染（骨架/动作，应用体型 + 动作参数） |
-| `GET /api/preset3d/live?...` | 实时预览（未保存的 body/actions） |
+| `GET /api/presets` · `GET /api/presets/new?species=` | 预设列表 / 新建表单（含 schema） |
+| `GET/POST/PUT/DELETE /api/presets...` | 预设 CRUD（保存即 bake 固化骨架 + 动作参数数值） |
+| `GET /api/skins` · `GET /api/skins/new?preset=` | 皮肤列表 / 新建表单 |
+| `GET/POST/PUT/DELETE /api/skins...` | 皮肤 CRUD + 部件 CRUD + 上传（`<id>/parts/<p>/mesh|texture`） |
+| `GET /api/templates` | 形态模板列表 |
+| `GET /api/skeleton3d/<id>?data=1` | 骨架 3D 数据（WebGL） / PNG 渲染 |
+| `GET /api/motion3d/<id>?data=1` · `POST /api/motion3d/live` | 动作帧数据 / 实时单帧 |
+| `GET /api/motion3d/<id>?gif=1` | 动作 PNG / GIF / frames / sprite |
+| `GET /api/skin3d/<id>?preset=` | 蒙皮数据（网格 + 每帧 LBS 顶点） |
+| `GET /api/preset3d/<id>` · `live` | 预设渲染（骨架/动作，baked 或实时） |
+| 其它（非 `/api`） | embed 前端 SPA（index.html fallback） |
 
-**3D 相机参数**（轨道相机：绕模型中心，从空间一点看模型）：
-- `yaw` 水平角（0-360：0=front，90=side，180=back）；`pitch` 俯仰角（-60~60）
-- `dist` 相机距离（200-1500）；`zoom` 缩放倍率（0.5-2）
-- 前端：快捷视角按钮（常驻）+「相机」面板（细调，收纳）+ **预览图拖拽旋转**
+**3D 相机参数**（轨道相机）：`yaw`（0=front/90=side/180=back）、`pitch`（±89）、`dist`（距离倍数）、`pan_x/pan_y`、`grid`。
 
-## CLI（与 HTTP 同级，共用同一套 Api）
+## CLI（`gocore`，与 HTTP 同级）
 
 ```bash
-.venv/bin/python -m creatureforge.cli species list
-.venv/bin/python -m creatureforge.cli species templates          # 形态模板（含从 0 开始）
-# 分步向导（Web SpeciesView「新建（向导）」等价；模板可选 / custom 从 0 开始）
-.venv/bin/python -m creatureforge.cli species wizard dragon       # 交互式分步
-.venv/bin/python -m creatureforge.cli species wizard-init dragon --template custom --title "深渊幼龙"
-.venv/bin/python -m creatureforge.cli species joint-add dragon body --pos 480,300,0
-.venv/bin/python -m creatureforge.cli species joint-add dragon head --parent neck --pos 480,110,0
-.venv/bin/python -m creatureforge.cli species limb-mirror dragon wing_l        # 一键镜像对称肢
-.venv/bin/python -m creatureforge.cli species chain-add dragon spine --joints head,neck,chest,body
-.venv/bin/python -m creatureforge.cli species param-add dragon head_scale --joints head --label 头大小
-.venv/bin/python -m creatureforge.cli species wizard-commit dragon
-.venv/bin/python -m creatureforge.cli species schema human
-.venv/bin/python -m creatureforge.cli preset new human
-.venv/bin/python -m creatureforge.cli preset create --json '{"preset_id":"m","species":"human","title":"M","body":{"head_scale":1.2}}'
-.venv/bin/python -m creatureforge.cli render skeleton human --out skel.png --yaw 45 --body head_scale=1.2
-.venv/bin/python -m creatureforge.cli render motion walk3d --gif --out walk.gif
-.venv/bin/python -m creatureforge.cli render preset m --action walk3d --gif --out walk.gif
-.venv/bin/python -m creatureforge.cli skin new model_man
-.venv/bin/python -m creatureforge.cli skin create --json '{"skin_id":"s1","preset":"model_man","title":"S1","params":{"fat":0.8}}'
-.venv/bin/python -m creatureforge.cli skin parts s1
-.venv/bin/python -m creatureforge.cli skin part-add s1 --json '{"part_id":"p_helm","title":"头盔","kind":"bone","bone":"head"}'
-.venv/bin/python -m creatureforge.cli render skin walk3d --preset model_man --skin s1 --out skin.glb
+gocore --data-dir data --species human --task build                    # 骨架数据
+gocore --data-dir data --species human --action walk3d --task pose --frame 0
+gocore --data-dir data --species human --action walk3d --task lbs --frame 0
 ```
+
+> CLI 全命令（species/action/preset/skin/render/upgrade）迁移中，见 `TODO.md`。
 
 ## 启动
 
-**生产（Python 直接服务 dist 静态 + API）**
+**生产（单二进制，embed 前端）**
 ```bash
-cd creatureforge/web && pnpm install && pnpm run build
-python creatureforge/server.py --port 8765
+./scripts/build.sh
+./dist/gocore-server --port 8765 --data-dir data    # http://localhost:8765
 ```
 
 **开发（热更新，前后端分离）**
-- 终端 1 — 后端 API（`--dev` 追加 CORS 头）：`.venv/bin/python creatureforge/server.py --dev --port 8765`
-- 终端 2 — 前端 Vite dev（proxy `/api` `/run` → 8765）：`cd creatureforge/web && pnpm run dev`（http://localhost:5173）
-  - 也可在 web 目录用 `pnpm run dev:api` 起后端；后端端口可用 `API_TARGET` 环境变量覆盖 proxy 目标
+```bash
+./scripts/start-dev.sh    # gocore-server --dev:8765 (CORS) + Vite:5173
+```
 
 ## 3D 架构（FK 关节旋转 + 真实动捕）
 
 ```
-动作 walk3d.json（fk3d.rotations3d：全关节每帧真实旋转 table + root3d 根位移）
-   + 骨架 skeleton.json（fk_tree/fk_local 骨向量）+ default.json（positions_3d 体型）
-        ↓ build_skeleton_3d()
-3D 骨架 {joint: [x,y,z]}
-        ↓ pose_3d()  →  FK 正向运动学（父累积旋转）+ 3D IK + 刚性传播
-3D 姿势
-        ↓ project3d()（yaw/pitch/dist/zoom 透视）
-屏幕坐标 → render_pose() → PNG / GIF
+动作 walk3d.json（fk3d.rotations3d + root3d）
+   + 骨架 skeleton.json（fk_tree/fk_local）+ default.json（positions_3d）
+        ↓ skeleton.BuildSkeleton()
+3D 骨架 → skeleton.Pose()（FK 正向运动学 + LBS 蒙皮）
+        ↓ render.Project3d()（轨道相机透视）
+屏幕坐标 → render.RenderPose() → PNG / GIF / sprite
 ```
 
-- **骨骼与 walk 按真实 CMU 动捕重建**（subject16, `16_15.bvh`）：骨长比例精确一致、全关节旋转照搬
-- `skeleton3d.py`：FK（solve_fk3d）、3D 两骨 IK（pole 定弯曲）、渲染、自动适配
-- `motion.py`：信号 DSL（table / param / phase / ...）
-- 前端：物种 / 预设 / 皮肤均**ToB 化（表格 + 详情页，骨骼/动作/体型/部件独立页面）**；编辑统一**普通（语义化）/ 高级 JSON 双页签共享数据**；物种分步向导新建（模板可选/从 0）；姿态快速操作（旋转/平移/水平化）；动作语义化维护（基本信息 + 参数 + 预览）；3D 相机（轨道 + 面板 + 拖拽）
+- **骨骼与 walk 按真实 CMU 动捕重建**（subject16, `16_15.bvh`）：骨长比例精确一致、全关节旋转照搬。
+- 预设 = 基于物种的实例：**体型参数**（schema 由 `param_chains` 派生）+ **动作参数**（schema 由动作 `params` 派生）。
 
-## 架构约束（强制 — 禁止硬编码，数据驱动）
+## 迁移状态
 
-> 本约定为强制约束。任何代码新增/修改都必须遵守，违者视为架构违规。
-
-**核心原则：数据在 JSON，逻辑在引擎，参数化渲染。**
-- 关节名 / 解剖方向 / 路径 / 数值常量一律从 JSON（骨架 `constraints`、default `canvas`、派生 schema）读取，**禁止硬编码**
-- 渲染 = 读取（骨架 JSON + 动作 JSON + 动作参数 + 体型参数 + 相机参数）→ 计算 → 输出；引擎不产生新数据语义，缺字段回退/报错，**不得在代码里补默认人类值**
-
-**JSON 多层（数据归属）**
-| 层 | 数据 | 存放 |
-|----|------|------|
-| 物种 skeleton.json | 拓扑、`fk_tree`、`bones_3d`、约束（`joint_direction`/`rigid_chains`/`symmetry3d`/...） | `species/<id>/skeleton.json` |
-| 默认 default.json | `positions_3d`（3D 体型坐标）、`canvas`（画布/地面/中心） | `species/<id>/default.json` |
-| 预设 | 值（`body` 体型 + `actions` 动作幅度），schema 由物种派生 | `presets/<id>.json` |
-| 皮肤 | 值（`materials` 材质 + `params` 皮肤参数 + `parts` 部件），schema 由预设物种 `skin_params.json` 派生 | `skins/<id>.json` + `skins/assets/<id>/` |
-| 动作 action | `fk3d`（关节旋转）、`root3d`、`ik3d`、`signals`、`params` | `species/<id>/actions3d/<id>.json` |
-
-**验证也数据驱动**：`verify_motions3d.py` 的检查项（对称对、顺拐对、刚性跟随、脚着地、肘角）全部从骨架 `constraints` 读取，禁止硬编码关节名。
+- ✅ expr DSL / FK / LBS / store / HTTP API / render / logging / config / 前端 embed
+- 🔜 glTF 导出 · CLI 全命令 · 向导 wizard · 动作参数提取

@@ -1,82 +1,61 @@
-# CreatureForge — 任务交接 / TODO
+# CreatureForge — 任务交接 / TODO（Go 全量迁移）
 
 > 本文件用于项目内交接：新会话/伙伴接手时先读本文件 + `README_ZH.md` + `PROJECT.md`。
-> 当前主线：**3D 动作系统（CMU 动捕数据驱动）+ 物种/预设 + CLI/HTTP 统一 Api + Godot demo**。
+> 当前主线：**Go 全量重写（无 Python）+ 前端 embed + 全命令 CLI**。
 
-## 一、已完成（最近会话）
+## 一、已完成（Go 迁移里程碑）
 
-- **骨骼与 walk 按真实 CMU 动捕重建**（subject16, `16_15.bvh`）：骨长比例精确一致、全关节旋转照搬；`verify_motions3d.py` walk 8 项全 PASS。
-- **统一 Api**：`interfaces.Api`（Protocol, @runtime_checkable）声明全部操作，`api.ApiService` 唯一实现（组合物种+预设+渲染），`make_api()` 运行时硬约束；CLI（`python -m creatureforge.cli`）与 HTTP（server.py）共用同一套接口，避免两侧漂移。
-- **预设系统**：`presets.py`（CRUD + schema 派生，值存 `data/presets/<id>.json`（数据目录默认仓库根 data/，--data-dir 可覆盖），schema 由物种派生不落盘）；前端独立入口（PresetsView：体型参数 + 动作幅度 + 实时预览）；CLI `preset new/create/list/...`。
-- **dev 模式**：后端 `--dev`（CORS + OPTIONS）、前端 `pnpm run dev`（Vite 5173，proxy `/api` → 8765），前后端分离热更新；`pnpm approve-builds --all` 解决 esbuild 构建忽略问题。
-- **3D 相机改造**：轨道相机（预览图拖拽旋转 + 快捷按钮 + 收纳面板），`useOrbitDrag`（isDragging 必须 ref）。
-- **清理过时内容**：packaging / build / webflow 发布链 / 旧参考资产；保留 `prototype/`（Godot demo）、`scripts/mocap/`、`verify_motions3d.py`。
-- **皮肤系统**：`skins.py`（CRUD + schema 派生，值存 `data/skins/<id>.json`，schema 由预设物种 `skin/skin_params.json` 派生不落盘）；皮肤基于预设（Species → Preset → Skin → 导出）；前端独立入口（SkinsView：材质 + 皮肤参数 + 蒙皮预览）；CLI `skin new/create/list/...`；LBS 蒙皮 `skeleton3d.skinned_vertices()` + glTF 动画导出。
-- **皮肤部件系统（游戏皮肤式）**：皮肤 = 基底 + 部件集合；`skinparts.py`（GLB/glTF/OBJ/JSON 网格解析，PBR 材质 + 内嵌贴图提取，Y-up→Y-down 翻转）；部件上传（`/api/skins/<id>/parts/<p>/mesh|texture`）+ 附着骨架（bone 装饰件：选绑定骨骼 + position/rotation/scale）；`export_glb` 部件作为骨骼子节点（动画跟随）；SkinsView「🧩 部件」tab（上传网格/贴图、选骨骼、调变换、预览）；资产存 `data/skins/assets/<id>/<part>/`。
-- **预设蒙皮闭环**：PresetsView「🧍 蒙皮」tab — 选皮肤+动作 → 蒙皮预览 → 导出 GLB（`/api/skin3d/export`，预设体型/动作 + 皮肤材质/体态/部件）。
-- **导航切换修复**：PresetsView beforeUnmount 引用未定义 `playTimer` 中断路由更新 → 删除残留代码，导航切换正常。
-- **物种分步向导（阶段 A）**：`wizard.py`（模板系统 + 骨架结构操作 + 草稿 + commit 派生 skeleton/default/preset_schema）；`data/templates/`（humanoid + custom 从 0 开始，数据驱动可扩展）；**模板可选择、支持从 0 开始构建任意形态**；CLI `species wizard`（交互式）+ `joint-add/rm/rename/parent`、`limb-mirror`、`chain-add/rm`、`pose-set`、`canvas`、`param-add`、`wizard-commit/discard`；前端 SpeciesView「新建物种（向导）」分步（基本信息→选模板/从 0→骨架→姿态→体型参数，3D 预览实时反馈）；「高级 JSON」保留为专家模式；修复 `species_list` joint_count 对映射 joints 的计数 bug。
-- **物种 ToB + 语义化编辑**：SpeciesView 移除左侧列表 → 表格 + 详情页 tabs [骨骼|动作]；`SpeciesSkeletonView`（骨骼页：普通/高级 JSON 双页签共享 draft，files API 同步）、`SpeciesActionsView`（动作页）；CLI `species edit` 交互式 + 分步命令直接作用于已有物种；`wizard.rotate/translate`（姿态快速操作，避免笔直朝天）+ 前端水平化按钮。
-- **预设/皮肤 ToB + 动作语义化**：PresetsView / SkinsView 改为表格 + 详情页（与物种一致）；动作编辑器语义化（基本信息 + 参数表单 + 高级 JSON 双页签共享）；移除「蒙皮」独立入口（皮肤体系保留）。
-- **前端动作预览**：`MotionPreview.vue` 封装播放 + 导出 GIF（后端 `gif=1`）。
-- **全量测试**：E2E 11 用例全通过（物种/预设 CRUD、渲染、GIF、相机、多动作预览+过渡段）；CLI 流程化测试 5 用例（`scripts/test_cli.py`，物种/动作/预设/渲染/错误处理，数据隔离 `test-data-cli/`）。
-- **跨平台发布**：pyinstaller 构建嵌入 web 的 `creature-forge-server`/`creature-forge-cli` 二进制；GitHub Actions（`.github/workflows/release.yml`）矩阵产出 Linux/Windows/macOS，`v*` tag 触发（含 `-rc/-beta/-alpha` 预览版）；Release Notes 由 git 历史自动生成（`scripts/gen_changelog.py`，Conventional Commits 分组），无需维护 CHANGELOG。
+- **Go 计算内核**：`gocore/expr`（表达式 DSL）+ `gocore/skeleton`（FK 姿态 / LBS 蒙皮），与 Python golden 逐顶点一致（容差 1e-6），性能基准 ~16×。
+- **基础设施**：`internal/logging`（uber-zap 自封装）+ `internal/config`（viper 读 `config.yaml` + `CFG_` 环境变量覆盖）。
+- **数据层**：`internal/store`（完整领域模型 + species/presets/skins/actions JSON CRUD + 引擎转换）。
+- **HTTP server 数据层**：`internal/server` 镜像原 server.py 全部路由——species/presets/skins/actions CRUD + 3D 数据接口（`skeleton3d`/`motion3d`/`motion3d/live`/`skin3d`，LBS 4450 顶点实测）+ 预设 bake（固化骨架 + 动作参数数值）。
+- **渲染**：`internal/render` 标准库替代 Pillow（轨道相机透视 + 地面网格 + 骨架绘制，PNG/GIF/sprite）。
+- **前端 embed**：`gocore-server` 单二进制（`//go:embed` Vue 前端，含 SPA history fallback）；`gocore` CLI 不含前端。
+- **清理 Python**：删除 `creatureforge/*.py`、`requirements.txt`、`scripts/*.py`、`scripts/mocap/`、Python 版 start/stop/test 脚本；workflow/脚本/文档改写为 Go 版。旧 Python 版 main 备份在 **`main-python-backup`** 分支。
+- **测试**：Go 全量单测全绿（expr/skeleton/store/server/render/config/logging）+ embed 静态服务测试。
 
 ## 二、当前结构
 
 | 路径 | 说明 |
 |---|---|
-| `creatureforge/api.py / interfaces.py / cli.py / server.py` | 统一 Api（CLI+HTTP 共享）+ 薄路由 + CLI |
-| `creatureforge/species.py / presets.py / skins.py / skinparts.py / wizard.py / skeleton3d.py / motion.py` | 物种 / 预设 / 皮肤 / 部件解析 / 分步向导（模板+骨架操作）/ 3D 引擎（FK/IK/LBS 蒙皮）/ DSL |
-| `data/templates/` | 形态模板（humanoid / custom 从 0 开始；数据驱动，可扩展任意幻想生物） |
-| `data/species/human/` | 骨骼 + default（CMU 体型）+ actions3d/（walk/run/jump/crawl/idle 真实动捕）+ skin/（mesh + weights + skin_params） |
-| `data/presets/` | 预设（物种实例：body + actions；运行时用户数据） |
-| `data/skins/` | 皮肤（预设实例：materials + params + parts）+ `assets/<id>/<part>/`（部件网格/贴图） |
-| `creatureforge/web/` | Vue 3 前端（物种 / 预设 / 皮肤 ToB：表格 + 详情页，普通/高级双页签） |
-| `scripts/mocap/` | CMU 工具链（bvh_parser / rebuild_skeleton_cmu / extract_kin / compare_motion） |
-| `scripts/verify_motions3d.py` | 3D 动作验证（8 项检查，数据驱动） |
-| `scripts/test_cli.py` | CLI 流程化测试（unittest，物种/动作/预设/渲染，数据隔离 test-data-cli/） |
-| `scripts/build_release.py` | pyinstaller 跨平台构建（server 嵌入 web + 物种数据，产物带版本号） |
-| `.github/workflows/release.yml` | 跨平台发布（`v*` tag → 构建 + Release，预发布自动 Pre-release） |
-| `scripts/gen_changelog.py` | 发布说明自动生成（git 历史 Conventional Commits 分组，零依赖） |
-| `prototype/` | **Godot 4.7 demo（保留）** |
+| `gocore/cmd/gocore-server/` | HTTP server（embed 前端，单二进制） |
+| `gocore/cmd/gocore/` | CLI（不含前端） |
+| `gocore/expr/` | 动作表达式 DSL |
+| `gocore/skeleton/` | 3D 引擎（FK / LBS 蒙皮 / 基准） |
+| `gocore/internal/store/` | 数据层（领域模型 + CRUD） |
+| `gocore/internal/server/` | HTTP API + embed 静态 |
+| `gocore/internal/render/` | 渲染（PNG/GIF/sprite） |
+| `gocore/internal/logging/` `gocore/internal/config/` | 日志 + 配置 |
+| `creatureforge/web/` | Vue 3 前端（唯一保留的 Python 时代模块） |
+| `data/` | 数据根（species/presets/skins/templates） |
+| `prototype/` | Godot 4.7 demo（保留） |
+| `scripts/` | build.sh / start-dev / stop-dev / test（Go 版） |
+| `.github/workflows/release.yml` | Go 交叉编译发布（`v*` tag） |
 
 ## 三、下一步（待办）
 
-1. **[P0] 动作向导（关键帧插值）**：动作语义化编辑器补关键帧 — 3D 预览摆姿势 → 引擎插值生成 fk3d 旋转表 + 根位移（当前仅基本信息/参数语义化，fk3d 仍靠 JSON/模板）。
-2. **[P1] 幻想生物模板集**：quadruped / dragon / serpent / multi_pod / floating（数据驱动，扩展 `data/templates/`）。
-3. **[P1] 骨架可视化增强**：姿态 tab 关节拖拽摆姿势（当前坐标表单 + 旋转/平移快速操作）。
-4. **[P1] 皮肤 CLI/E2E 用例**：`scripts/test_cli.py` 加 `skin`/`wizard` 流程化用例；E2E 覆盖 SkinsView。
-5. **[P2] 皮肤部件 skinned 蒙皮件**（带权重 LBS 贴合变形）；Godot demo 接入；预设实时预览打磨。
+1. **[P0] glTF 导出**：`gocore/internal/gltf` 镜像 `gltf.py`——`GET /api/skin3d/export/<action>` 导出 .glb（骨骼 + 蒙皮 + 动作动画 + 部件）；需 `per_frame_trs`（每帧骨骼 TRS，Y-up 欧拉）。
+2. **[P0] CLI 全命令**：`cmd/gocore` 扩展 species/action/preset/skin/render/upgrade 全命令（镜像原 cli.py）。
+3. **[P1] 向导 wizard**：`internal/server` 补 `wizard` 路由（init/joint/limb/chain/pose/coord/param/commit）+ 坐标参数化 + 动作参数提取（`extract-params`）。
+4. **[P1] 前端 E2E 适配**：确认前端 E2E（playwright）在 Go server 下全通过。
+5. **[P2] Godot demo 接入** 3D 动作。
 
 ## 四、关键命令
 
 ```bash
-# 验证 3D 动作
-.venv/bin/python scripts/verify_motions3d.py --species human --action walk3d
+# Go 全量测试
+cd gocore && go vet ./... && go test ./...
 
-# CMU 真实骨骼/walk 重建（数据驱动，勿手工改 JSON）
-.venv/bin/python scripts/mocap/rebuild_skeleton_cmu.py --inspect   # 查看 CMU 数据特征
-.venv/bin/python scripts/mocap/rebuild_skeleton_cmu.py --skeleton  # 重建 default.json positions_3d
-.venv/bin/python scripts/mocap/rebuild_skeleton_cmu.py --walk      # 重建 walk3d.json（真实旋转）
+# 启动 server（单二进制，embed 前端）
+./scripts/build.sh && ./dist/gocore-server --port 8765 --data-dir data
 
-# CLI（与 HTTP 同级，同一套 Api，不启动 server）
-.venv/bin/python -m creatureforge.cli species list
-.venv/bin/python -m creatureforge.cli render skeleton human --out skel.png --yaw 45
-.venv/bin/python -m creatureforge.cli render motion walk3d --gif --out walk.gif
-
-# 开发：后端 --dev + 前端 pnpm run dev（proxy /api → 8765）
-.venv/bin/python creatureforge/server.py --dev --port 8765
-cd creatureforge/web && pnpm run dev
+# 开发环境（热更新）
+./scripts/start-dev.sh
 ```
 
-## 五、已知坑 / 约定
+## 五、迁移注意事项
 
-1. **数据驱动**：骨骼/动作参数一律从真实 CMU BVH 提取，不要手工设计参数（用户明确要求）。
-2. **统一 Api**：新增任何操作必须先声明到 `interfaces.Api`（CLI/HTTP 两侧自动一致）；`ApiService` 是实现。
-3. **FK 语义**：位置用父累积旋转（不含自身）；FK 分支跳过 rigid_chains（避免覆盖真实脚位）。
-4. **循环走**：root3d.z 移除（原地走，腿步幅真实），否则周期 wrap 会跳变。
-5. **周期检测**：完整步态周期 = 同侧着地（间隔 2），自动选姿势差最小（walk 用 139 帧，差 11.4°）。
-6. **elbow 检查**：用解剖学 shoulder-elbow-wrist 三点（walk 肘屈 18~35° 匹配真实）。
-7. **dev 模式**：pnpm 11 的 esbuild 构建需 `pnpm approve-builds --all`；`useOrbitDrag.isDragging` 必须是 ref。
-8. **环境**：用 `.venv/`（Pillow 12.3.0）；纯 Python（无 numpy/scipy）。
+- **数据驱动**：所有数据在外部 JSON，Go 代码不硬编码关节/参数名。
+- **JSON 契约**：HTTP API 返回结构与原 Python server 一致（前端未改动）。
+- **性能**：LBS/FK 在 Go 约快 16×（Python 829ms → Go 52ms / 16 帧）。
+- **create_file 自动插 package 行**：写 .go 文件后需检查重复 package（曾多次踩坑）。

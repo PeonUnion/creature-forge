@@ -6,7 +6,7 @@
   "packageManager": "pnpm@11.8.0",
   "scripts": {
     "dev": "vite",
-    "dev:api": "../../.venv/bin/python ../server.py --dev",
+    "dev:api": "cd ../../gocore && go run ./cmd/gocore-server --dev",
     "build": "vite build",
     "preview": "vite preview",
     "test:e2e": "playwright test"
