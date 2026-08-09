@@ -34,6 +34,11 @@ else:
     BUNDLED_SPECIES = None
 
 
+# Go 计算内核（可选加速）：gocore 二进制路径。None 时用 PATH 中的 `gocore`；
+# 找不到则回退纯 Python（core.py）。可被环境变量 GOCORE_BIN 覆盖。
+GOCORE_BIN: str | None = None
+
+
 def ensure_species_seeded(data_dir: Path | None = None) -> Path:
     """确保物种数据可用。
 
