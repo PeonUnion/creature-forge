@@ -54,7 +54,24 @@
                   <span v-if="selJoint" class="xform-sel">{{ selJoint }}</span>
                   <el-button v-if="selJoint" size="small" text type="primary" @click="clearSel">清除</el-button>
                 </div>
-                <p v-if="!selJoint" class="hint small">点击 3D 关节球或关节树选中；未选中时旋转/平移作用于整体。</p>
+                <div v-if="!selJoint" class="xform-block">
+                  <div class="xform-t">整体平移（全部关节）</div>
+                  <div class="row3">
+                    <el-input-number v-model="xf.dx" size="small" :step="5" />
+                    <el-input-number v-model="xf.dy" size="small" :step="5" />
+                    <el-input-number v-model="xf.dz" size="small" :step="5" />
+                    <el-button size="small" type="primary" @click="applyTranslate">平移</el-button>
+                  </div>
+                  <div class="xform-t">整体旋转（绕质心）</div>
+                  <div class="row3">
+                    <el-select v-model="xf.axis" size="small" style="width: 64px">
+                      <el-option v-for="a in ['x','y','z']" :key="a" :label="a.toUpperCase()" :value="a" />
+                    </el-select>
+                    <el-input-number v-model="xf.angle" size="small" :step="5" :min="-180" :max="180" />
+                    <el-button size="small" type="primary" @click="applyRotate">旋转</el-button>
+                  </div>
+                  <p class="hint small">点击 3D 关节球或关节树选中关节后，可单独编辑位置/旋转/平移。</p>
+                </div>
                 <template v-else>
                   <div class="xform-block">
                     <div class="xform-t">位置 XYZ（直接设坐标）</div>
@@ -92,6 +109,20 @@
                     <p class="hint small">也可在 3D 预览直接按住该关节拖拽移动。</p>
                   </div>
                 </template>
+              </div>
+              <div class="sec">
+                <div class="sec-t xform-head">
+                  <span>全部关节坐标</span>
+                  <el-button size="small" text type="primary" @click="showCoords = !showCoords">{{ showCoords ? '收起' : '展开' }}</el-button>
+                </div>
+                <div v-if="showCoords" class="coord-table">
+                  <div v-for="n in jointNames" :key="n" class="coord-row">
+                    <span class="mono coord-name">{{ n }}</span>
+                    <el-input-number v-model="coordVals[n].x" size="small" :step="5" @change="applyCoord(n)" />
+                    <el-input-number v-model="coordVals[n].y" size="small" :step="5" @change="applyCoord(n)" />
+                    <el-input-number v-model="coordVals[n].z" size="small" :step="5" @change="applyCoord(n)" />
+                  </div>
+                </div>
               </div>
               <div class="sec">
                 <div class="sec-t">新增关节</div>
@@ -351,6 +382,7 @@ function restorePos(snap) {
   if (!wiz.value) return
   wiz.value.positions_3d = snap
   dirty.value = true
+  syncCoordVals()   // 同步「全部关节坐标」总表
   if (selJoint.value && snap[selJoint.value]) {
     const [x, y, z] = snap[selJoint.value]; xf.value.pos = { x, y, z }
   }
@@ -440,6 +472,27 @@ function onDragEnd({ name, dx, dy, dz }) {
 }
 // 编辑视图与网格吸附
 const editPlane = ref('front')    // front/back=正/背面(锁z) / left/right=左右侧视(锁x)
+
+// 全部关节坐标总表（批量查看/编辑 XYZ，直接修错位关节）
+const showCoords = ref(false)
+const coordVals = ref({})
+function syncCoordVals() {
+  const out = {}
+  for (const n of jointNames.value) {
+    const p = pos3d.value[n] || [0, 0, 0]
+    out[n] = { x: p[0], y: p[1], z: p[2] }
+  }
+  coordVals.value = out
+}
+function applyCoord(n) {
+  const v = coordVals.value[n]
+  if (!wiz.value || !v) return
+  pushUndo()
+  wiz.value.positions_3d ||= {}
+  wiz.value.positions_3d[n] = [r2(v.x), r2(v.y), r2(v.z)]
+  dirty.value = true
+  if (n === selJoint.value) xf.value.pos = { x: r2(v.x), y: r2(v.y), z: r2(v.z) }
+}
 const snapEnabled = ref(true)    // 网格吸附开关
 const gridStep = ref(5)          // 网格精度（落点吸附步长）
 const skeletonViewerApi = ref(null)
@@ -495,6 +548,7 @@ async function refresh() {
   wiz.value = await api.wizardGet(props.speciesId)
   if (localPos) wiz.value.positions_3d = { ...(wiz.value.positions_3d || {}), ...localPos }
   canvas.value = { ...(wiz.value?.canvas || { width: 960, height: 600, floor_y: 470 }) }
+  syncCoordVals()
 }
 
 async function loadFiles() {
@@ -640,6 +694,10 @@ async function save() {
 .xform-sel { font-family: monospace; font-size: .8rem; color: #409eff; }
 .xform-block { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; border-top: 1px dashed #d9ecff; }
 .xform-t { font-size: .74rem; color: #606266; }
+.coord-table { display: flex; flex-direction: column; gap: 3px; max-height: 50vh; overflow-y: auto; }
+.coord-row { display: flex; align-items: center; gap: 4px; font-size: .8rem; }
+.coord-name { width: 130px; flex: 0 0 auto; }
+.coord-row .el-input-number { width: 96px; flex: 0 0 auto; }
 .joint-list { max-height: 46vh; min-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .joint-row { display: flex; align-items: center; gap: 6px; font-size: .8rem; padding: 2px 4px; border-radius: 4px; cursor: pointer; }
 .joint-row:hover { background: #f0f2f5; }
