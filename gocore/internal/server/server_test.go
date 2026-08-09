@@ -5,8 +5,11 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/PeonUnion/creature-forge/gocore/internal/config"
@@ -232,5 +235,61 @@ func TestTemplates(t *testing.T) {
 	}
 	if !ids["custom"] || !ids["humanoid"] {
 		t.Fatalf("templates missing: %v", ids)
+	}
+}
+
+// TestEmbedStatic verifies the embedded SPA is served (index.html, hashed
+// assets, SPA history fallback) and that missing real assets return 404.
+func TestEmbedStatic(t *testing.T) {
+	ts := newTestServer(t)
+	// GET / → index.html
+	resp, err := http.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !bytes.Contains(body, []byte("<!doctype html")) {
+		t.Fatalf("GET /: %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("GET / content-type: %s", ct)
+	}
+	// extract a hashed JS asset reference from index.html and fetch it
+	re := regexp.MustCompile(`src="\.?/?([^"]+\.js)"`)
+	m := re.FindStringSubmatch(string(body))
+	if len(m) < 2 {
+		t.Fatalf("no js asset in index.html")
+	}
+	asset := strings.TrimPrefix(m[1], "./")
+	resp2, err := http.Get(ts.URL + "/" + asset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+	if resp2.StatusCode != 200 {
+		t.Fatalf("GET %s: %d", asset, resp2.StatusCode)
+	}
+	if ct := resp2.Header.Get("Content-Type"); !strings.Contains(ct, "javascript") {
+		t.Fatalf("asset content-type: %s", ct)
+	}
+	// SPA history fallback → index.html
+	resp3, err := http.Get(ts.URL + "/presets/model_male")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body3, _ := io.ReadAll(resp3.Body)
+	resp3.Body.Close()
+	if resp3.StatusCode != 200 || !bytes.Contains(body3, []byte("<!doctype html")) {
+		t.Fatalf("SPA fallback: %d", resp3.StatusCode)
+	}
+	// missing real asset → 404
+	resp4, err := http.Get(ts.URL + "/assets/definitely-missing-12345.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp4.Body.Close()
+	if resp4.StatusCode != 404 {
+		t.Fatalf("missing asset: %d", resp4.StatusCode)
 	}
 }

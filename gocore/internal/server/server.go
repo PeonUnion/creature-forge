@@ -7,9 +7,11 @@ package server
 // JSON contracts match the Python server exactly (front-end unchanged).
 
 import (
+	"embed"
 	"encoding/json"
+	"io/fs"
 	"net/http"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/PeonUnion/creature-forge/gocore/internal/config"
@@ -17,21 +19,30 @@ import (
 	"github.com/PeonUnion/creature-forge/gocore/internal/store"
 )
 
+// staticFS embeds the built Vue SPA (gocore/internal/server/static/) into the
+// server binary so the API server can serve the front-end as a single
+// executable. The CLI (cmd/gocore) does NOT import this package and therefore
+// stays free of the front-end.
+//
+// The static/ directory is produced from creatureforge/web/dist at build time
+// (see scripts/build.sh). Keep it in sync when the front-end changes.
+//
+//go:embed static
+var staticFS embed.FS
+
 // Server is the assembled HTTP server (mirror of build_server).
 type Server struct {
-	Store   *store.Store
-	Dev     bool
-	WebDist string // production SPA root; empty in dev
-	Log     *logging.Logger
+	Store *store.Store
+	Dev   bool
+	Log   *logging.Logger
 }
 
 // New assembles a Server from config (mirror of build_server).
 func New(cfg *config.Config, log *logging.Logger) *Server {
 	return &Server{
-		Store:   store.New(cfg.Data.Root),
-		Dev:     cfg.Server.Dev,
-		WebDist: "web/dist",
-		Log:     log,
+		Store: store.New(cfg.Data.Root),
+		Dev:   cfg.Server.Dev,
+		Log:   log,
 	}
 }
 
@@ -138,20 +149,60 @@ func decodeBody(r *http.Request, v any) error {
 	return dec.Decode(v)
 }
 
-// serveStatic serves the Vue SPA from WebDist with index.html fallback.
+// serveStatic serves the embedded Vue SPA with index.html fallback for
+// client-side routes (Vue Router history mode).
 func (s *Server) serveStatic(w http.ResponseWriter, r *http.Request) {
-	if s.WebDist == "" {
-		s.json(w, map[string]any{"ok": false, "error": "static not configured (dev mode)"}, http.StatusNotFound)
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		s.json(w, map[string]any{"ok": false, "error": "static unavailable"}, http.StatusInternalServerError)
 		return
 	}
-	clean := filepath.Clean(r.URL.Path)
-	if clean == "." || strings.HasPrefix(clean, "..") {
-		clean = "index.html"
+	name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+	if name == "." || name == "" {
+		name = "index.html"
 	}
-	fp := filepath.Join(s.WebDist, clean)
-	// SPA fallback: unknown non-file routes → index.html
-	if r.URL.Path != "/" && filepath.Ext(fp) == "" {
-		fp = filepath.Join(s.WebDist, "index.html")
+	data, err := fs.ReadFile(sub, name)
+	if err != nil {
+		// real asset missing → 404; anything else → SPA fallback to index.html
+		if strings.HasPrefix(name, "assets/") {
+			s.json(w, map[string]any{"ok": false, "error": "not found"}, http.StatusNotFound)
+			return
+		}
+		data, err = fs.ReadFile(sub, "index.html")
+		if err != nil {
+			s.json(w, map[string]any{"ok": false, "error": "not found"}, http.StatusNotFound)
+			return
+		}
+		name = "index.html"
 	}
-	http.ServeFile(w, r, fp)
+	w.Header().Set("Content-Type", mimeTypeOf(name))
+	_, _ = w.Write(data)
+}
+
+// mimeTypeOf mirrors server._mime.
+func mimeTypeOf(name string) string {
+	switch strings.ToLower(path.Ext(name)) {
+	case ".html":
+		return "text/html; charset=utf-8"
+	case ".css":
+		return "text/css; charset=utf-8"
+	case ".js":
+		return "application/javascript; charset=utf-8"
+	case ".json", ".map":
+		return "application/json; charset=utf-8"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".svg":
+		return "image/svg+xml"
+	case ".ico":
+		return "image/x-icon"
+	case ".woff2":
+		return "font/woff2"
+	case ".webp":
+		return "image/webp"
+	default:
+		return "application/octet-stream"
+	}
 }

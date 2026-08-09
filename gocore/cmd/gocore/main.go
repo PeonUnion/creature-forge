@@ -1,11 +1,11 @@
-// Command gocore is the Go binary of CreatureForge: it exposes the Go
-// computation kernel (FK pose + LBS skinning) reading external JSON data, and
-// (with `server`) the full HTTP API that the Vue frontend talks to.
+// Command gocore is the Go CLI of CreatureForge: it exposes the Go
+// computation kernel (FK pose + LBS skinning) reading external JSON data.
+// The HTTP API + embedded front-end live in the separate binary
+// cmd/gocore-server (so the CLI stays free of the front-end).
 //
 // Usage:
 //
 //	gocore --data-dir <root> --species human [--action walk3d] [--frame 0] --task build|pose|lbs
-//	gocore server [--config ../config.yaml] [--port 8765] [--host 127.0.0.1] [--dev]
 package main
 
 import (
@@ -13,21 +13,15 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/PeonUnion/creature-forge/gocore/internal/config"
 	"github.com/PeonUnion/creature-forge/gocore/internal/logging"
-	"github.com/PeonUnion/creature-forge/gocore/internal/server"
 	"github.com/PeonUnion/creature-forge/gocore/skeleton"
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "server" {
-		runServer(os.Args[2:])
-		return
-	}
 	var dataDir, species, action, task, configPath string
 	var frame int
 	var useStdin bool
@@ -180,60 +174,6 @@ func emit(v any) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(v); err != nil {
-		fatal(err)
-	}
-}
-
-// runServer starts the HTTP API server (gocore server ...). Flags mirror the
-// Python server CLI (--port/--host/--dev/--data-dir/--config).
-func runServer(args []string) {
-	fs := flag.NewFlagSet("server", flag.ExitOnError)
-	var port int
-	var host, dataDir, configPath string
-	var dev bool
-	fs.IntVar(&port, "port", 8765, "listen port")
-	fs.StringVar(&host, "host", "127.0.0.1", "listen host")
-	fs.StringVar(&dataDir, "data-dir", "", "data root (default from config or ./data)")
-	fs.BoolVar(&dev, "dev", false, "dev mode (CORS + no static serving)")
-	fs.StringVar(&configPath, "config", "", "config.yaml path")
-	if err := fs.Parse(args); err != nil {
-		fatal(err)
-	}
-
-	cfg := config.Default()
-	if configPath != "" {
-		loaded, err := config.Load(configPath)
-		if err != nil {
-			fatal(fmt.Errorf("load config: %w", err))
-		}
-		cfg = loaded
-	}
-	if port != 8765 {
-		cfg.Server.Port = port
-	}
-	if host != "127.0.0.1" {
-		cfg.Server.Host = host
-	}
-	if dev {
-		cfg.Server.Dev = true
-	}
-	if dataDir != "" {
-		cfg.Data.Root = dataDir
-	}
-	log := logging.New(logging.Config{
-		Level:  logging.Level(cfg.Log.Level),
-		Format: logging.Format(cfg.Log.Format),
-		Output: cfg.Log.Output,
-	})
-	logging.SetDefault(log)
-	srv := server.New(cfg, log)
-	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-	mode := "prod"
-	if cfg.Server.Dev {
-		mode = "dev"
-	}
-	log.Info("CreatureForge server started", "mode", mode, "addr", addr, "data_root", cfg.Data.Root)
-	if err := http.ListenAndServe(addr, srv.Handler()); err != nil {
 		fatal(err)
 	}
 }
