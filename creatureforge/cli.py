@@ -422,6 +422,9 @@ def cmd_action(args) -> None:
         print("saved:", svc.action_update(args.species, args.id, _load_json_arg(args)))
     elif args.sub == "delete":
         print("deleted:", svc.action_delete(args.species, args.id))
+    elif args.sub == "extract-params":
+        new = svc.action_extract_params(args.species, args.id)
+        _json({k: v for k, v in new.items() if k != "fk3d"} | {"params": new.get("params", {})})
 
 
 def cmd_preset(args) -> None:
@@ -590,6 +593,8 @@ def build_parser() -> argparse.ArgumentParser:
     a1 = asp.add_parser("create"); a1.add_argument("species"); a1.add_argument("--json"); a1.add_argument("--file")
     a1 = asp.add_parser("update"); a1.add_argument("species"); a1.add_argument("id"); a1.add_argument("--json"); a1.add_argument("--file")
     a1 = asp.add_parser("delete"); a1.add_argument("species"); a1.add_argument("id")
+    a1 = asp.add_parser("extract-params", help="动作参数提取：单一 intensity → 整体+部位/维度多参数（写回动作 JSON）")
+    a1.add_argument("species"); a1.add_argument("id")
 
     # preset
     pp = sub.add_parser("preset", help="预设管理（独立入口，调体型 + 动作幅度）")

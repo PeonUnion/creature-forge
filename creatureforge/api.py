@@ -90,6 +90,14 @@ class ApiService:
     def action_delete(self, species_id: str, action_id: str) -> str:
         return self.species.delete_action(species_id, action_id)
 
+    def action_extract_params(self, species_id: str, action_id: str) -> dict:
+        """动作参数提取：把单一 intensity 拆分为整体+部位/维度多参数（写回动作 JSON）。"""
+        from .motion import extract_params
+        motion = self.species.get_action(species_id, action_id)
+        new = extract_params(motion)
+        self.species.save_action(species_id, action_id, new)
+        return new
+
     # ------------------------------------------------------------------
     # 预设
     # ------------------------------------------------------------------

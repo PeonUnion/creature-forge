@@ -370,6 +370,13 @@ class CreatureForgeHandler(SimpleHTTPRequestHandler):
             return self._json({"ok": True, "saved": sp_id})
         # 动作路由：POST /api/species/<id>/actions 或 PUT .../actions/<aid>
         if len(parts) >= 2 and parts[1] == "actions":
+            # 参数提取：POST /api/species/<id>/actions/<aid>/extract-params
+            if len(parts) >= 4 and parts[3] == "extract-params":
+                try:
+                    new = self.api.action_extract_params(sp_id, parts[2])
+                except Exception as e:
+                    return self._json({"ok": False, "error": str(e)}, 400)
+                return self._json({"ok": True, "action": new})
             action_id = body.get("motion_id", "").strip() if len(parts) == 2 else parts[2]
             if not action_id:
                 return self._json({"ok": False, "error": "action_id required"}, 400)

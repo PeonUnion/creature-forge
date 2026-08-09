@@ -82,6 +82,8 @@
               <el-button size="small" text type="danger" @click="rmParam(pkey)">删</el-button>
             </div>
             <el-button size="small" @click="addParam" icon="Plus">加参数</el-button>
+            <el-button size="small" type="primary" plain :loading="extractingParams" @click="extractActionParams">⚡ 提取参数（按部位）</el-button>
+            <span class="hint">「提取参数」把单一 intensity 拆为整体+部位/维度多参数（摆臂/腿部/躯干/步长/起伏，默认=原动作），写回动作 JSON。</span>
             <span class="hint">旋转/位移数据（fk3d）在高级 JSON 中；预览用物种默认动作模板，或由动作向导（后续）生成关键帧。</span>
           </div>
         </el-tab-pane>
@@ -264,6 +266,21 @@ function addParam() {
 function rmParam(pkey) {
   if (!actionEditor.value) return
   delete actionEditor.value.params[pkey]
+}
+const extractingParams = ref(false)
+async function extractActionParams() {
+  if (!actionEditor.value?.motion_id) { ElMessage.warning('请先填写 motion_id 并保存'); return }
+  extractingParams.value = true
+  try {
+    const r = await api.actionExtractParams(props.speciesId, actionEditor.value.motion_id)
+    if (r && r.ok && r.action) {
+      actionEditor.value = r.action
+      actionJson.value = JSON.stringify(r.action, null, 2)
+      dirty.value = false  // 提取已写回动作 JSON
+      ElMessage.success('已按部位提取动作参数（摆臂/腿部/躯干/步长/起伏），默认=原动作')
+    } else ElMessage.error('提取失败')
+  } catch (e) { ElMessage.error(e.message) }
+  extractingParams.value = false
 }
 function syncJsonToEditor() {
   try {

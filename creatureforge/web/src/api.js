@@ -72,6 +72,10 @@ export const api = {
   /** 删除动作 */
   deleteAction: (speciesId, actionId) => raw(`/api/species/${encodeURIComponent(speciesId)}/actions/${encodeURIComponent(actionId)}`, { method: 'DELETE' }),
 
+  /** 动作参数提取：单一 intensity → 整体+部位/维度多参数（写回动作 JSON） */
+  actionExtractParams: (speciesId, actionId) =>
+    raw(`/api/species/${encodeURIComponent(speciesId)}/actions/${encodeURIComponent(actionId)}/extract-params`, json({})),
+
   // -- 物种默认参数（物种自带姿态/体型；动作与骨架预览的基础） --
 
   /** 读物种默认参数 @returns {Promise<object>} */
