@@ -497,12 +497,25 @@ class SpeciesWizard:
         return self._view(draft)
 
     def apply_pose(self, species_id: str, positions: dict | None = None) -> dict:
-        """整体写入默认姿态坐标（前端本地暂存后，保存按钮统一落草稿）。"""
+        """整体写入默认姿态坐标（前端本地暂存后，保存按钮统一落草稿）。
+
+        支持两种关节格式：list [x,y,z]（数值常量）与 dict {x,y,z}
+        （坐标参数化表达式，原样保留；axis 可为数值或表达式对象）。
+        """
         draft = self._load_draft(species_id)
         pos3d = draft.setdefault("default", {}).setdefault("positions_3d", {})
         for name, pos in (positions or {}).items():
-            if name in draft["nodes"] and isinstance(pos, (list, tuple)) and len(pos) == 3:
+            if name not in draft["nodes"]:
+                continue
+            if isinstance(pos, (list, tuple)) and len(pos) == 3:
                 pos3d[name] = [float(v) for v in pos]
+            elif isinstance(pos, dict):
+                # 参数化关节：保留表达式；数值分量转 float，表达式分量原样
+                cleaned = {}
+                for axis in ("x", "y", "z"):
+                    v = pos.get(axis)
+                    cleaned[axis] = float(v) if isinstance(v, (int, float)) else v
+                pos3d[name] = cleaned
         self._save_draft(self._draft_path(species_id), draft)
         return self._view(draft)
 

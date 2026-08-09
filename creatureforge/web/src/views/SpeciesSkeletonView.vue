@@ -85,6 +85,30 @@
                     <el-button size="small" type="primary" @click="applyPos">设坐标</el-button>
                   </div>
                   <div class="xform-block">
+                    <div class="xform-t">坐标分量参数化（引用坐标参数，对称共享）</div>
+                    <div v-for="ax in ['x','y','z']" :key="ax" class="axis-row">
+                      <span class="mono axis-t">{{ ax.toUpperCase() }}</span>
+                      <el-select v-model="axMode[ax].kind" size="small" style="width: 64px" @change="applyAxis(ax)">
+                        <el-option value="const" label="常量" />
+                        <el-option value="param" label="参数" />
+                      </el-select>
+                      <template v-if="axMode[ax].kind === 'param'">
+                        <el-select v-model="axMode[ax].param" size="small" placeholder="参数" style="width: 122px" filterable @change="applyAxis(ax)">
+                          <el-option v-for="(s, pn) in (wiz?.params || {})" :key="pn" :label="`${pn} · ${s.label || ''}`" :value="pn" />
+                        </el-select>
+                        <el-select v-model="axMode[ax].op" size="small" style="width: 70px" @change="applyAxis(ax)">
+                          <el-option value="direct" label="直接" />
+                          <el-option value="neg" label="取负" />
+                          <el-option value="mul" label="倍数" />
+                          <el-option value="add" label="偏移" />
+                        </el-select>
+                        <el-input-number v-if="axMode[ax].op === 'mul' || axMode[ax].op === 'add' || axMode[ax].op === 'neg'" v-model="axMode[ax].k" size="small" :step="1" @change="applyAxis(ax)" style="width: 84px" />
+                        <el-button size="small" text type="danger" @click="clearAxis(ax)">固化常量</el-button>
+                      </template>
+                      <el-input-number v-else v-model="axMode[ax].val" size="small" :step="1" @change="applyAxis(ax)" style="width: 110px" />
+                    </div>
+                  </div>
+                  <div class="xform-block">
                     <div class="xform-t">旋转（绕该关节，带动子树改朝向）</div>
                     <div class="row3">
                       <el-select v-model="xf.axis" size="small" style="width: 64px">
@@ -486,10 +510,80 @@ function localTranslate(dx, dy, dz, joint) {
 
 // -- 变换面板（选中关节的位置 / 旋转 / 平移） --
 const xf = ref({ axis: 'z', angle: 15, dx: 0, dy: 0, dz: 0, pos: { x: 0, y: 0, z: 0 } })
+
+// 坐标分量参数化：把关节某轴绑定到坐标参数（引用名+计算方式），或固化为常量
+const axMode = ref({ x: { kind: 'const', val: 0, param: '', op: 'direct', k: 1 }, y: { kind: 'const', val: 0, param: '', op: 'direct', k: 1 }, z: { kind: 'const', val: 0, param: '', op: 'direct', k: 1 } })
+function parseAxis(v, P) {
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    if (v.param) return { kind: 'param', param: v.param, op: 'direct', k: 1, val: evalCoordExpr(v, P) }
+    if (v.neg && v.neg.param) return { kind: 'param', param: v.neg.param, op: 'neg', k: 1, val: evalCoordExpr(v, P) }
+    if (v.mul && v.mul[0]?.param && v.mul[1]?.const) return { kind: 'param', param: v.mul[0].param, op: 'mul', k: v.mul[1].const, val: evalCoordExpr(v, P) }
+    if (v.add && Array.isArray(v.add)) {
+      // 兼容两种顺序：{"add":[{"param":p},{"const":k}]} 或 中心互补 {"add":[{"const":c},{"param":p}]}
+      const pIdx = v.add.findIndex(x => x && x.param)
+      const cIdx = v.add.findIndex(x => x && x.const !== undefined)
+      if (pIdx >= 0 && cIdx >= 0) return { kind: 'param', param: v.add[pIdx].param, op: 'add', k: v.add[cIdx].const, val: evalCoordExpr(v, P) }
+      // 中心互补取反：{"add":[{"const":c},{"neg":{"param":p}}]} → x = c - p
+      const nIdx = v.add.findIndex(x => x && x.neg && x.neg.param)
+      if (nIdx >= 0 && cIdx >= 0) return { kind: 'param', param: v.add[nIdx].neg.param, op: 'neg', k: v.add[cIdx].const, val: evalCoordExpr(v, P) }
+    }
+  }
+  return { kind: 'const', val: typeof v === 'number' ? v : 0, param: '', op: 'direct', k: 1 }
+}
+function syncAxMode() {
+  const name = selJoint.value
+  const raw = name ? (wiz.value?.positions_3d?.[name]) : null
+  const P = coordParamsVal.value
+  if (Array.isArray(raw)) {
+    axMode.value = { x: parseAxis(raw[0], P), y: parseAxis(raw[1], P), z: parseAxis(raw[2], P) }
+  } else if (raw && typeof raw === 'object') {
+    axMode.value = { x: parseAxis(raw.x, P), y: parseAxis(raw.y, P), z: parseAxis(raw.z, P) }
+  } else {
+    axMode.value = { x: { kind: 'const', val: 0, param: '', op: 'direct', k: 1 }, y: { kind: 'const', val: 0, param: '', op: 'direct', k: 1 }, z: { kind: 'const', val: 0, param: '', op: 'direct', k: 1 } }
+  }
+}
+function applyAxis(ax) {
+  if (!wiz.value || !selJoint.value) return
+  const m = axMode.value[ax]
+  const p = wiz.value.positions_3d ||= {}
+  const cur = p[selJoint.value]
+  const obj = Array.isArray(cur) ? { x: cur[0], y: cur[1], z: cur[2] } : (cur && typeof cur === 'object' ? { ...cur } : {})
+  if (m.kind === 'const') {
+    obj[ax] = m.val ?? 0
+  } else {
+    if (!m.param) return
+    const ref = { param: m.param }
+    if (m.op === 'neg') obj[ax] = (m.k && m.k !== 0) ? { add: [{ const: m.k }, { neg: ref }] } : { neg: ref }
+    else if (m.op === 'mul') obj[ax] = { mul: [ref, { const: m.k ?? 1 }] }
+    else if (m.op === 'add') obj[ax] = { add: [ref, { const: m.k ?? 0 }] }
+    else obj[ax] = ref
+  }
+  p[selJoint.value] = obj
+  dirty.value = true
+  syncCoordVals()
+  const P = coordParamsVal.value
+  const xyz = Array.isArray(obj) ? obj.map(v => evalCoordExpr(v, P)) : ['x', 'y', 'z'].map(a => evalCoordExpr(obj[a], P))
+  xf.value.pos = { x: xyz[0], y: xyz[1], z: xyz[2] }
+}
+function clearAxis(ax) {
+  const m = axMode.value[ax]
+  const name = selJoint.value
+  const raw = name ? wiz.value?.positions_3d?.[name] : null
+  const P = coordParamsVal.value
+  const v = Array.isArray(raw) ? raw[['x', 'y', 'z'].indexOf(ax)] : (raw && typeof raw === 'object') ? raw[ax] : 0
+  m.kind = 'const'
+  m.val = Math.round(evalCoordExpr(v, P) * 100) / 100
+  applyAxis(ax)
+}
 watch(selJoint, (name) => {
-  if (name && pos3d.value[name]) {
-    const [x, y, z] = pos3d.value[name]
-    xf.value.pos = { x, y, z }
+  syncAxMode()
+  if (name) {
+    const P = coordParamsVal.value
+    const raw = pos3d.value[name]
+    const xyz = Array.isArray(raw) ? raw.map(v => evalCoordExpr(v, P))
+      : (raw && typeof raw === 'object') ? ['x', 'y', 'z'].map(a => evalCoordExpr(raw[a], P))
+      : [0, 0, 0]
+    xf.value.pos = { x: xyz[0], y: xyz[1], z: xyz[2] }
   }
 })
 function clearSel() { selJoint.value = ''; hoverJoint.value = '' }
@@ -639,6 +733,7 @@ async function refresh() {
   if (localParams) wiz.value.params = { ...(wiz.value.params || {}), ...localParams }
   canvas.value = { ...(wiz.value?.canvas || { width: 960, height: 600, floor_y: 470 }) }
   syncCoordVals()
+  syncAxMode()
 }
 
 async function loadFiles() {
@@ -787,6 +882,8 @@ async function save() {
 .xform-sel { font-family: monospace; font-size: .8rem; color: #409eff; }
 .xform-block { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; border-top: 1px dashed #d9ecff; }
 .xform-t { font-size: .74rem; color: #606266; }
+.axis-row { display: flex; align-items: center; gap: 6px; font-size: .8rem; }
+.axis-t { width: 16px; flex: 0 0 auto; color: #909399; font-weight: 600; }
 .param-table { display: flex; flex-direction: column; gap: 4px; max-height: 30vh; overflow-y: auto; }
 .param-row { display: flex; align-items: center; gap: 6px; font-size: .8rem; }
 .param-row .pkey { width: 96px; flex: 0 0 auto; }
